@@ -183,8 +183,8 @@ func (result orderResult) plan() (resolvedPlan, error) {
 				plan.RepoTargets = append(plan.RepoTargets, name)
 			}
 		case "AUR":
-			name := record.Fields[1]
-			pkgbase := record.Fields[2]
+			pkgbase := record.Fields[1]
+			name := record.Fields[2]
 			if !seenAUR[pkgbase] {
 				seenAUR[pkgbase] = true
 				plan.AURPkgbases = append(plan.AURPkgbases, pkgbase)
@@ -211,10 +211,7 @@ func (result orderResult) ensureTargetsClassified(targets []string) error {
 	recordsByTarget := map[string]bool{}
 	for _, record := range result.Records {
 		if (record.Kind == "REPO" || record.Kind == "AUR") && record.Fields[0] == "TARGET" {
-			recordsByTarget[record.Fields[1]] = true
-			if record.Kind == "REPO" {
-				recordsByTarget[record.Fields[2]] = true
-			}
+			recordsByTarget[record.Fields[2]] = true
 		}
 	}
 	for _, target := range targets {

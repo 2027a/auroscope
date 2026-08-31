@@ -439,7 +439,7 @@ func TestParuPlanRejectsSRCINFORecordsBeforeExecution(t *testing.T) {
 }
 
 func TestParuPlanSupportsVariableLengthAURSplitRecords(t *testing.T) {
-	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"TARGET", "split-member", "split-base", "extra", "metadata"}}}}
+	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"TARGET", "split-base", "split-member", "extra", "metadata"}}}}
 	plan, err := result.plan()
 	if err != nil {
 		t.Fatal(err)
@@ -452,6 +452,21 @@ func TestParuPlanSupportsVariableLengthAURSplitRecords(t *testing.T) {
 	}
 	if err := result.ensureTargetsClassified([]string{"split-member"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestParuTargetClassificationUsesPackageNamesNotPkgbases(t *testing.T) {
+	result := orderResult{Records: []orderRecord{
+		{Kind: "AUR", Fields: []string{"TARGET", "split-base", "split-member"}},
+		{Kind: "REPO", Fields: []string{"TARGET", "extra", "tree"}},
+	}}
+	if err := result.ensureTargetsClassified([]string{"split-member", "tree"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, nonPackageName := range []string{"split-base", "extra"} {
+		if err := result.ensureTargetsClassified([]string{nonPackageName}); err == nil || !strings.Contains(err.Error(), "not classified") {
+			t.Fatalf("non-package field %q classification error = %v", nonPackageName, err)
+		}
 	}
 }
 
@@ -483,7 +498,7 @@ func TestParuOrderRejectsIncompatibleRecords(t *testing.T) {
 }
 
 func TestParuPlanRejectsUnclassifiedRequestedTarget(t *testing.T) {
-	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"DEP", "dep", "depbase"}}}}
+	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"DEP", "depbase", "dep"}}}}
 	if _, err := result.plan(); err != nil {
 		t.Fatal(err)
 	}

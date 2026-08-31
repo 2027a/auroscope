@@ -270,8 +270,8 @@ func TestAURDependencyIsAuditedBeforeFinalRun(t *testing.T) {
 	paruPath := writeExecutable(t, dir, "paru", `#!/bin/sh
 printf '%s\n' "$*" >> "$CALLS"
 if test "$1 $2" = "-P --order"; then
-  printf 'AUR TARGET target targetbase\n'
-  printf 'AUR DEP dep depbase\n'
+  printf 'AUR TARGET targetbase target\n'
+  printf 'AUR DEP depbase dep\n'
   exit 0
 fi
 if test "$1" = "-G"; then
@@ -312,7 +312,7 @@ func TestSplitAURRecordsAcquirePkgbaseOnceAndPreserveTarget(t *testing.T) {
 	dir := t.TempDir()
 	repo := createRecipeRepo(t, dir, "split-base", "pkgbase=split-base\npkgname=('split-member' 'split-helper')\n")
 	calls := filepath.Join(dir, "calls")
-	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET split-member split-base\nAUR DEP split-helper split-base\n")
+	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET split-base split-member\nAUR DEP split-base split-helper\n")
 	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"split package reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
 
 	status := run([]string{"-S", "split-member"}, runConfig{
@@ -346,7 +346,20 @@ func TestSplitAURRecordsAcquirePkgbaseOnceAndPreserveTarget(t *testing.T) {
 	if final == "" || !strings.HasSuffix(final, " split-member") {
 		t.Fatalf("final Paru target did not preserve split member: %q", final)
 	}
-	assertBaseline(t, filepath.Join(dir, "state.sqlite3"), "split-base")
+	statePath := filepath.Join(dir, "state.sqlite3")
+	assertBaseline(t, statePath, "split-base")
+	db, err := sql.Open("sqlite3", statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var auditCount int
+	if err := db.QueryRow(`SELECT count(*) FROM audits WHERE pkgbase = ?`, "split-base").Scan(&auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("audit count = %d, want 1", auditCount)
+	}
 }
 
 func TestCodexFailureCanSkipWithoutFinalBuild(t *testing.T) {
