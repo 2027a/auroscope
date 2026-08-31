@@ -13,6 +13,11 @@ import (
 
 const maxCodexJSONBytes = 256 * 1024
 
+var supportedCodexVersions = map[string]struct{}{
+	"codex-cli 0.150.1": {},
+	"codex-cli 0.151.0": {},
+}
+
 type auditReport struct {
 	Summary     string         `json:"summary"`
 	Risk        string         `json:"risk"`
@@ -82,8 +87,8 @@ func (c codexClient) verifyVersion() error {
 		return fmt.Errorf("Codex CLI version check failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	version := strings.TrimSpace(stdout.String())
-	if version != "codex-cli 0.150.1" {
-		return fmt.Errorf("unsupported Codex CLI version %q, want codex-cli 0.150.1", version)
+	if _, ok := supportedCodexVersions[version]; !ok {
+		return fmt.Errorf("unsupported Codex CLI version %q; supported versions are 0.150.1 and 0.151.0", version)
 	}
 	return nil
 }

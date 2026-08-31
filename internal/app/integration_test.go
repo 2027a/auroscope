@@ -649,6 +649,18 @@ printf '{"summary":"from final file","risk":"low","findings":[],"uncertainty":""
 	}
 }
 
+func TestCodexAcceptsSupportedVersions(t *testing.T) {
+	for _, version := range []string{"codex-cli 0.150.1", "codex-cli 0.151.0"} {
+		t.Run(version, func(t *testing.T) {
+			dir := t.TempDir()
+			codexPath := writeExecutable(t, dir, "codex", "#!/bin/sh\nprintf '"+version+"\\n'\n")
+			if err := (codexClient{path: codexPath}).verifyVersion(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestCodexRejectsUnsupportedVersionAndInvalidManifestReferences(t *testing.T) {
 	dir := t.TempDir()
 	codexPath := writeExecutable(t, dir, "codex", `#!/bin/sh
