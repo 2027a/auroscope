@@ -1,0 +1,163 @@
+package app
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"io"
+	"os/exec"
+	"strings"
+	"unicode"
+)
+
+type paruClient struct {
+	config runConfig
+}
+
+type orderResult struct {
+	Status  int
+	Records []orderRecord
+}
+
+type orderRecord struct {
+	Kind   string
+	Fields []string
+}
+
+func (paru paruClient) run(stdout io.Writer, args []string) commandResult {
+	return paru.runInDir(stdout, "", args)
+}
+
+func (paru paruClient) runInDir(stdout io.Writer, dir string, args []string) commandResult {
+	config := paru.config.withDefaults()
+	if stdout == nil {
+		stdout = config.stdout
+	}
+	cmd := exec.Command(config.paruPath, args...)
+	cmd.Dir = dir
+	cmd.Stdin = config.stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = config.stderr
+	return execute(config, cmd)
+}
+
+// selectPackages uses the pinned Paru native interactive-search contract. Its
+// menu remains on stderr while stdout contains selected targets, and status 1
+// denotes successful completion of this special selection path.
+func (paru paruClient) selectPackages(terms []string) ([]string, error) {
+	var selected bytes.Buffer
+	args := append([]string{"-Ssaq", "--interactive"}, terms...)
+	result := paru.run(&selected, args)
+	if result.status != 1 {
+		return nil, incompatibleParu("interactive selection returned status %d, want 1", result.status)
+	}
+
+	var packages []string
+	scanner := bufio.NewScanner(&selected)
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" || strings.TrimSpace(line) != line || !validSelectedTarget(line) {
+			return nil, incompatibleParu("interactive selection emitted non-target stdout %q", line)
+		}
+		packages = append(packages, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read Paru selection: %w", err)
+	}
+	return packages, nil
+}
+
+func validSelectedTarget(target string) bool {
+	for _, r := range target {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("@._+:/=-", r) {
+			continue
+		}
+		return false
+	}
+	return target != ""
+}
+
+// order consumes only the records emitted by the pinned issue-21 `-P
+// --order` implementation. Unknown or malformed records are compatibility
+// failures rather than input for a fallback human-output parser.
+func (paru paruClient) order(targets []string) (orderResult, error) {
+	var output bytes.Buffer
+	args := append([]string{"-P", "--order"}, targets...)
+	command := paru.run(&output, args)
+	if command.status != 0 && command.status != 1 {
+		return orderResult{}, incompatibleParu("order returned status %d", command.status)
+	}
+
+	result := orderResult{Status: command.status}
+	hasMissing := false
+	scanner := bufio.NewScanner(&output)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 {
+			return orderResult{}, incompatibleParu("order emitted an empty record")
+		}
+		if err := validateOrderRecord(fields); err != nil {
+			return orderResult{}, err
+		}
+		if fields[0] == "MISSING" {
+			hasMissing = true
+		}
+		result.Records = append(result.Records, orderRecord{
+			Kind:   fields[0],
+			Fields: append([]string(nil), fields[1:]...),
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return orderResult{}, fmt.Errorf("read Paru order output: %w", err)
+	}
+	if (command.status == 1) != hasMissing {
+		return orderResult{}, incompatibleParu("order status %d does not match MISSING records", command.status)
+	}
+	return result, nil
+}
+
+func validateOrderRecord(fields []string) error {
+	switch fields[0] {
+	case "REPO", "AUR":
+		if len(fields) != 4 || !validPackageRole(fields[1]) {
+			return incompatibleParu("malformed %s order record %q", fields[0], strings.Join(fields, " "))
+		}
+	case "SRCINFO":
+		if len(fields) != 6 || !validPackageRole(fields[1]) {
+			return incompatibleParu("malformed SRCINFO order record %q", strings.Join(fields, " "))
+		}
+	case "CONFLICT":
+		if (len(fields) != 4 && len(fields) != 5) || (fields[1] != "LOCAL" && fields[1] != "INNER") {
+			return incompatibleParu("malformed CONFLICT order record %q", strings.Join(fields, " "))
+		}
+	case "MISSING":
+		if len(fields) < 2 {
+			return incompatibleParu("malformed MISSING order record %q", strings.Join(fields, " "))
+		}
+	default:
+		return incompatibleParu("unknown order record %q", fields[0])
+	}
+	return nil
+}
+
+func validPackageRole(role string) bool {
+	return role == "TARGET" || role == "MAKE" || role == "DEP"
+}
+
+// acquire asks Paru to obtain an AUR package base in cloneDir. The command's
+// native streams and status are preserved, and AURoscope does not inspect by
+// executing package-supplied content.
+func (paru paruClient) acquire(pkgbase, cloneDir string) error {
+	result := paru.runInDir(nil, cloneDir, []string{"-G", pkgbase})
+	if result.status != 0 {
+		if result.err != nil && result.status < 0 {
+			return fmt.Errorf("run Paru -G: %w", result.err)
+		}
+		return fmt.Errorf("Paru -G exited with status %d", result.status)
+	}
+	return nil
+}
+
+func incompatibleParu(format string, args ...any) error {
+	return fmt.Errorf("incompatible Paru issue-21 contract: "+format, args...)
+}
