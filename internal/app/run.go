@@ -186,6 +186,9 @@ func commandMayBuildAUR(args []string) bool {
 	if hasArgument(args, "--repo") {
 		return false
 	}
+	if isRefreshOnlySync(args) {
+		return false
+	}
 
 	sync := false
 	nonBuildingSyncAction := false
@@ -224,6 +227,45 @@ func commandMayBuildAUR(args []string) bool {
 		}
 	}
 	return false
+}
+
+// isRefreshOnlySync recognizes the narrow Paru/Pacman sync form that refreshes
+// databases without a target or sysupgrade. With no target, this path cannot
+// reach an AUR build and must remain a transparent native invocation.
+func isRefreshOnlySync(args []string) bool {
+	sync := false
+	refresh := false
+	for _, arg := range args {
+		if arg == "-" || arg == "--" || !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		if strings.HasPrefix(arg, "--") {
+			name := arg
+			if index := strings.IndexByte(name, '='); index >= 0 {
+				name = name[:index]
+			}
+			switch name {
+			case "--sync":
+				sync = true
+			case "--refresh":
+				refresh = true
+			case "--sysupgrade":
+				return false
+			}
+			continue
+		}
+		for _, flag := range strings.TrimPrefix(arg, "-") {
+			switch flag {
+			case 'S':
+				sync = true
+			case 'y':
+				refresh = true
+			case 'u':
+				return false
+			}
+		}
+	}
+	return sync && refresh
 }
 
 func hasArgument(args []string, target string) bool {

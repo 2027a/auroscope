@@ -51,6 +51,62 @@ exit 17
 	}
 }
 
+func TestRefreshOnlySyncPassesThroughWithStreamsAndStatus(t *testing.T) {
+	for _, args := range [][]string{
+		{"-Sy"},
+		{"-Syy"},
+		{"-yS"},
+		{"--sync", "--refresh"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			argsFile := filepath.Join(dir, "args")
+			codexMarker := filepath.Join(dir, "codex-called")
+			paruPath := writeExecutable(t, dir, "paru", `#!/bin/sh
+printf '%s\n' "$@" > "$ARGS_FILE"
+printf 'native refresh stdout\n'
+printf 'native refresh stderr\n' >&2
+IFS= read -r answer
+printf 'stdin=%s\n' "$answer"
+exit 17
+`)
+			codexPath := writeExecutable(t, dir, "codex", `#!/bin/sh
+: > "$CODEX_MARKER"
+exit 99
+`)
+			t.Setenv("ARGS_FILE", argsFile)
+			t.Setenv("CODEX_MARKER", codexMarker)
+
+			var stdout, stderr bytes.Buffer
+			status := run(args, runConfig{
+				paruPath:  paruPath,
+				codexPath: codexPath,
+				statePath: filepath.Join(dir, "state.sqlite3"),
+				cloneDir:  filepath.Join(dir, "clones"),
+				stdin:     strings.NewReader("answer\n"),
+				stdout:    &stdout,
+				stderr:    &stderr,
+			})
+
+			if status != 17 {
+				t.Fatalf("status = %d, want 17; stderr = %q", status, stderr.String())
+			}
+			if got := readLines(t, argsFile); !reflect.DeepEqual(got, args) {
+				t.Fatalf("args = %#v, want %#v", got, args)
+			}
+			if got := stdout.String(); got != "native refresh stdout\nstdin=answer\n" {
+				t.Fatalf("stdout = %q", got)
+			}
+			if got := stderr.String(); got != "native refresh stderr\n" {
+				t.Fatalf("stderr = %q", got)
+			}
+			if _, err := os.Stat(codexMarker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("Codex was called or marker stat failed: %v", err)
+			}
+		})
+	}
+}
+
 func TestPassthroughPreservesPTY(t *testing.T) {
 	dir := t.TempDir()
 	paruPath := writeExecutable(t, dir, "paru", `#!/bin/sh

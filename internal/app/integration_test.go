@@ -213,6 +213,47 @@ func TestAURDependencyIsAuditedBeforeFinalRun(t *testing.T) {
 	}
 }
 
+func TestSplitAURRecordsAcquirePkgbaseOnceAndPreserveTarget(t *testing.T) {
+	dir := t.TempDir()
+	repo := createRecipeRepo(t, dir, "split-base", "pkgbase=split-base\npkgname=('split-member' 'split-helper')\n")
+	calls := filepath.Join(dir, "calls")
+	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET split-member split-base\nAUR DEP split-helper split-base\n")
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"split package reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+
+	status := run([]string{"-S", "split-member"}, runConfig{
+		paruPath:    paruPath,
+		codexPath:   codexPath,
+		statePath:   filepath.Join(dir, "state.sqlite3"),
+		cloneDir:    filepath.Join(dir, "clones"),
+		stdin:       strings.NewReader(""),
+		reviewInput: strings.NewReader("approve\n"),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+	})
+	if status != 0 {
+		t.Fatalf("status = %d; calls = %s", status, readString(t, calls))
+	}
+
+	callLines := strings.Split(strings.TrimSpace(readString(t, calls)), "\n")
+	var acquisitions []string
+	var final string
+	for _, call := range callLines {
+		if strings.HasPrefix(call, "-G ") {
+			acquisitions = append(acquisitions, call)
+		}
+		if strings.HasPrefix(call, "-S --skipreview --config ") {
+			final = call
+		}
+	}
+	if !reflect.DeepEqual(acquisitions, []string{"-G split-base"}) {
+		t.Fatalf("acquisitions = %#v, want one pkgbase acquisition; calls = %s", acquisitions, readString(t, calls))
+	}
+	if final == "" || !strings.HasSuffix(final, " split-member") {
+		t.Fatalf("final Paru target did not preserve split member: %q", final)
+	}
+	assertBaseline(t, filepath.Join(dir, "state.sqlite3"), "split-base")
+}
+
 func TestCodexFailureCanSkipWithoutFinalBuild(t *testing.T) {
 	dir := t.TempDir()
 	repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")

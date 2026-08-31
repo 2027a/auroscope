@@ -81,7 +81,7 @@ func (o orchestrator) run(originalArgs, targets []string) error {
 	for _, item := range reviewed {
 		if item.Decision == decisionApprove {
 			approved = append(approved, item.Identity)
-			finalTargets = append(finalTargets, item.Identity.Pkgbase)
+			finalTargets = append(finalTargets, plan.AURTargetsByPkgbase[item.Identity.Pkgbase]...)
 		}
 	}
 	if len(finalTargets) == 0 {

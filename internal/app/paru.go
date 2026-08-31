@@ -26,8 +26,9 @@ type orderRecord struct {
 }
 
 type resolvedPlan struct {
-	RepoTargets []string
-	AURPkgbases []string
+	RepoTargets         []string
+	AURPkgbases         []string
+	AURTargetsByPkgbase map[string][]string
 }
 
 func (paru paruClient) run(stdout io.Writer, args []string) commandResult {
@@ -160,7 +161,8 @@ func (paru paruClient) pendingAURUpdates() ([]string, error) {
 func (result orderResult) plan() (resolvedPlan, error) {
 	seenRepo := map[string]bool{}
 	seenAUR := map[string]bool{}
-	var plan resolvedPlan
+	seenAURTarget := map[string]map[string]bool{}
+	plan := resolvedPlan{AURTargetsByPkgbase: map[string][]string{}}
 	for _, record := range result.Records {
 		switch record.Kind {
 		case "REPO":
@@ -170,10 +172,20 @@ func (result orderResult) plan() (resolvedPlan, error) {
 				plan.RepoTargets = append(plan.RepoTargets, name)
 			}
 		case "AUR":
+			name := record.Fields[1]
 			pkgbase := record.Fields[2]
 			if !seenAUR[pkgbase] {
 				seenAUR[pkgbase] = true
 				plan.AURPkgbases = append(plan.AURPkgbases, pkgbase)
+			}
+			if record.Fields[0] == "TARGET" {
+				if seenAURTarget[pkgbase] == nil {
+					seenAURTarget[pkgbase] = map[string]bool{}
+				}
+				if !seenAURTarget[pkgbase][name] {
+					seenAURTarget[pkgbase][name] = true
+					plan.AURTargetsByPkgbase[pkgbase] = append(plan.AURTargetsByPkgbase[pkgbase], name)
+				}
 			}
 		case "MISSING", "CONFLICT":
 			return resolvedPlan{}, fmt.Errorf("Paru resolution reported %s: %s", record.Kind, strings.Join(record.Fields, " "))
