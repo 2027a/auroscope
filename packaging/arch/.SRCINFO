@@ -1,0 +1,20 @@
+pkgbase = auroscope
+	pkgdesc = LLM-first AUR recipe review wrapper for Paru
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://git.2027a.net/2027a/auroscope
+	arch = x86_64
+	license = LicenseRef-AURoscope-Proprietary
+	makedepends = go>=1.24.4
+	depends = glibc
+	depends = git
+	depends = paru-git>=2.1.0.r67.g9ac3578
+	depends = openai-codex-bin>=0.150.1
+	depends = openai-codex-bin<0.152.0
+	options = !debug
+	source = auroscope-0.1.0.tar.gz::https://git.2027a.net/2027a/auroscope/archive/0c89a6dc07320242508980c55b46f2811dfd9cc6.tar.gz
+	source = LICENSE
+	sha256sums = 9e6ce8aa53a58fb3cb29a4ae6f74fc6592eb981d71a78fbc6cb64c758d882b05
+	sha256sums = ebb82b09b9572e21b42453e52aca9cf4d3cc5a439067fe24b69365af692e4959
+
+pkgname = auroscope

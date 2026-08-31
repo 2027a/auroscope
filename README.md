@@ -42,9 +42,25 @@ CGO_ENABLED=1 go test ./...
 go vet ./...
 AUROSCOPE_E2E_DISPOSABLE_ARCH=1 scripts/e2e-disposable-arch.sh
 AUROSCOPE_E2E_SUPPORTED_PARU=1 scripts/e2e-supported-paru.sh
+AUROSCOPE_E2E_ARCH_PACKAGE=1 scripts/e2e-arch-package.sh
 ```
 
-Both disposable scripts require Docker and explicit guard variables. The first is a fast fake-Paru/fake-Codex integration smoke. The supported-version gate builds pinned Paru commit `9ac3578807a87858651e81a02586ceb947686e7c`, uses real AUR acquisition/resolution/build and Pacman installation only inside the disposable container, proves the real guard and drift rejection, and confirms that official-only work invokes no Codex audit.
+All three disposable scripts require Docker and explicit guard variables. The first is a fast fake-Paru/fake-Codex integration smoke. The supported-version gate builds pinned Paru commit `9ac3578807a87858651e81a02586ceb947686e7c`, uses real AUR acquisition/resolution/build and Pacman installation only inside the disposable container, proves the real guard and drift rejection, and confirms that official-only work invokes no Codex audit.
+
+The package gate builds `packaging/arch/PKGBUILD`, verifies the committed `.SRCINFO`, installs the resulting `auroscope` package in the pinned disposable Arch image, exercises the installed binary on an official-only transaction and the real Paru guard, then uninstalls it. It never changes the workstation Pacman database or cache.
+
+## Install on Arch Linux
+
+The self-hosted AUR-style package lives under [`packaging/arch/`](packaging/arch/). It is not published to `aur.archlinux.org`.
+
+The runtime contract deliberately requires the post-2.1.0 `paru-git` surface and a supported `openai-codex-bin` release. Install those reviewed AUR dependencies first, authenticate Codex, then build AURoscope from a trusted checkout:
+
+```console
+cd packaging/arch
+makepkg --cleanbuild --clean --syncdeps --install
+```
+
+See [`packaging/arch/INSTALL.md`](packaging/arch/INSTALL.md) for exact versions, bootstrap guidance, state paths, first checks, and removal.
 
 ## Previous design
 

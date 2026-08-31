@@ -10,6 +10,10 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.pkg.tar.*
+packaging/arch/*.tar.gz
 
 # Runtime state and reports
 *.db

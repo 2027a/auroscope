@@ -1,0 +1,60 @@
+# Maintainer: Héphaïstos <hephaistos@ecl.400iso.net>
+pkgname=auroscope
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='LLM-first AUR recipe review wrapper for Paru'
+arch=('x86_64')
+url='https://git.2027a.net/2027a/auroscope'
+license=('LicenseRef-AURoscope-Proprietary')
+options=('!debug')
+depends=(
+  'glibc'
+  'git'
+  'paru-git>=2.1.0.r67.g9ac3578'
+  'openai-codex-bin>=0.150.1'
+  'openai-codex-bin<0.152.0'
+)
+makedepends=('go>=1.24.4')
+_source_commit='0c89a6dc07320242508980c55b46f2811dfd9cc6'
+source=(
+  "${pkgname}-${pkgver}.tar.gz::${url}/archive/${_source_commit}.tar.gz"
+  'LICENSE'
+)
+sha256sums=(
+  '9e6ce8aa53a58fb3cb29a4ae6f74fc6592eb981d71a78fbc6cb64c758d882b05'
+  'ebb82b09b9572e21b42453e52aca9cf4d3cc5a439067fe24b69365af692e4959'
+)
+
+build() {
+  cd "$pkgname"
+  mkdir -p build
+
+  export CGO_CPPFLAGS="${CPPFLAGS}"
+  export CGO_CFLAGS="${CFLAGS}"
+  export CGO_CXXFLAGS="${CXXFLAGS}"
+  export CGO_LDFLAGS="${LDFLAGS}"
+  export GOFLAGS='-buildmode=pie -trimpath -ldflags=-linkmode=external -mod=readonly -modcacherw'
+
+  go build \
+    -o build/auroscope \
+    ./cmd/auroscope
+}
+
+check() {
+  cd "$pkgname"
+  CGO_ENABLED=1 go test ./...
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 build/auroscope "$pkgdir/usr/bin/auroscope"
+  install -Dm644 "$srcdir/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 docs/architecture/minimal-v1.md \
+    "$pkgdir/usr/share/doc/$pkgname/minimal-v1.md"
+  install -Dm644 docs/dependency-notes/codex-cli-contract.md \
+    "$pkgdir/usr/share/doc/$pkgname/codex-cli-contract.md"
+  install -Dm644 docs/dependency-notes/paru-issue-21-spike.md \
+    "$pkgdir/usr/share/doc/$pkgname/paru-contract.md"
+}
