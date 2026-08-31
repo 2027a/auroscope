@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -24,18 +25,31 @@ type orderRecord struct {
 	Fields []string
 }
 
+type resolvedPlan struct {
+	RepoTargets []string
+	AURPkgbases []string
+}
+
 func (paru paruClient) run(stdout io.Writer, args []string) commandResult {
 	return paru.runInDir(stdout, "", args)
 }
 
 func (paru paruClient) runInDir(stdout io.Writer, dir string, args []string) commandResult {
+	return paru.runInDirWithStdin(stdout, dir, args, paru.config.withDefaults().stdin)
+}
+
+func (paru paruClient) runMachine(stdout io.Writer, dir string, args []string) commandResult {
+	return paru.runInDirWithStdin(stdout, dir, args, nil)
+}
+
+func (paru paruClient) runInDirWithStdin(stdout io.Writer, dir string, args []string, stdin io.Reader) commandResult {
 	config := paru.config.withDefaults()
 	if stdout == nil {
 		stdout = config.stdout
 	}
 	cmd := exec.Command(config.paruPath, args...)
 	cmd.Dir = dir
-	cmd.Stdin = config.stdin
+	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = config.stderr
 	return execute(config, cmd)
@@ -83,7 +97,7 @@ func validSelectedTarget(target string) bool {
 func (paru paruClient) order(targets []string) (orderResult, error) {
 	var output bytes.Buffer
 	args := append([]string{"-P", "--order"}, targets...)
-	command := paru.run(&output, args)
+	command := paru.runMachine(&output, "", args)
 	if command.status != 0 && command.status != 1 {
 		return orderResult{}, incompatibleParu("order returned status %d", command.status)
 	}
@@ -114,6 +128,58 @@ func (paru paruClient) order(targets []string) (orderResult, error) {
 		return orderResult{}, incompatibleParu("order status %d does not match MISSING records", command.status)
 	}
 	return result, nil
+}
+
+func (paru paruClient) pendingAURUpdates() ([]string, error) {
+	var output bytes.Buffer
+	command := paru.runMachine(&output, "", []string{"-Qua", "--quiet"})
+	if command.status != 0 {
+		if command.err != nil && command.status < 0 {
+			return nil, command.err
+		}
+		return nil, childExit{status: command.status}
+	}
+	var targets []string
+	scanner := bufio.NewScanner(&output)
+	for scanner.Scan() {
+		target := strings.TrimSpace(scanner.Text())
+		if target == "" {
+			continue
+		}
+		if !validSelectedTarget(target) || strings.Contains(target, " ") {
+			return nil, incompatibleParu("AUR update output emitted non-target stdout %q", target)
+		}
+		targets = append(targets, target)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read Paru AUR update output: %w", err)
+	}
+	return targets, nil
+}
+
+func (result orderResult) plan() (resolvedPlan, error) {
+	seenRepo := map[string]bool{}
+	seenAUR := map[string]bool{}
+	var plan resolvedPlan
+	for _, record := range result.Records {
+		switch record.Kind {
+		case "REPO":
+			name := record.Fields[2]
+			if !seenRepo[name] {
+				seenRepo[name] = true
+				plan.RepoTargets = append(plan.RepoTargets, name)
+			}
+		case "AUR":
+			pkgbase := record.Fields[2]
+			if !seenAUR[pkgbase] {
+				seenAUR[pkgbase] = true
+				plan.AURPkgbases = append(plan.AURPkgbases, pkgbase)
+			}
+		case "MISSING", "CONFLICT":
+			return resolvedPlan{}, fmt.Errorf("Paru resolution reported %s: %s", record.Kind, strings.Join(record.Fields, " "))
+		}
+	}
+	return plan, nil
 }
 
 func validateOrderRecord(fields []string) error {
@@ -148,7 +214,7 @@ func validPackageRole(role string) bool {
 // native streams and status are preserved, and AURoscope does not inspect by
 // executing package-supplied content.
 func (paru paruClient) acquire(pkgbase, cloneDir string) error {
-	result := paru.runInDir(nil, cloneDir, []string{"-G", pkgbase})
+	result := paru.runMachine(nil, cloneDir, []string{"-G", pkgbase})
 	if result.status != 0 {
 		if result.err != nil && result.status < 0 {
 			return fmt.Errorf("run Paru -G: %w", result.err)
@@ -156,6 +222,17 @@ func (paru paruClient) acquire(pkgbase, cloneDir string) error {
 		return fmt.Errorf("Paru -G exited with status %d", result.status)
 	}
 	return nil
+}
+
+func (paru paruClient) finalInstall(args []string) commandResult {
+	return paru.run(nil, args)
+}
+
+func worktreePath(cloneDir, pkgbase string) (string, error) {
+	if !validSelectedTarget(pkgbase) || strings.Contains(pkgbase, "/") {
+		return "", fmt.Errorf("invalid pkgbase %q", pkgbase)
+	}
+	return filepath.Join(cloneDir, pkgbase), nil
 }
 
 func incompatibleParu(format string, args ...any) error {

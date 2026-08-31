@@ -4,7 +4,9 @@
 
 The minimal LLM-first architecture was accepted by Mathieu in [decision issue #19](https://git.2027a.net/2027a/auroscope/issues/19) with an exact standalone [`GO DECISION`](https://git.2027a.net/2027a/auroscope/issues/19#issuecomment-1314) on 2026-08-30.
 
-Production implementation remains unauthorized. The next permitted work is:
+Production implementation was authorized separately by Forgejo issue #24 on branch `execution/issue-24-auroscope-v1`. The issue #24 lane implements the accepted minimal v1 and verifies it with deterministic fake-Paru/fake-Codex tests plus a guarded disposable-Arch E2E script.
+
+Before that authorization, the next permitted work was:
 
 1. a narrow disposable-Arch spike proving the Paru worktree/audit/edit/final-build path;
 2. a new short implementation plan grounded in that evidence;

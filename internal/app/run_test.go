@@ -138,8 +138,10 @@ func TestBareUpdateRunsOfficialPhaseWithoutCodex(t *testing.T) {
 	argsFile := filepath.Join(dir, "args")
 	codexMarker := filepath.Join(dir, "codex-called")
 	paruPath := writeExecutable(t, dir, "paru", `#!/bin/sh
-printf '%s\n' "$@" > "$ARGS_FILE"
-printf 'official prompt\n'
+printf '%s\n' "$@" >> "$ARGS_FILE"
+if test "$1" = "-Syu"; then
+  printf 'official prompt\n'
+fi
 exit 0
 `)
 	writeExecutable(t, dir, "codex", `#!/bin/sh
@@ -151,11 +153,11 @@ exit 99
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var stdout bytes.Buffer
-	status := run(nil, runConfig{paruPath: paruPath, stdin: strings.NewReader(""), stdout: &stdout, stderr: io.Discard})
+	status := run(nil, runConfig{paruPath: paruPath, statePath: filepath.Join(dir, "state.sqlite3"), cloneDir: filepath.Join(dir, "clones"), stdin: strings.NewReader(""), stdout: &stdout, stderr: io.Discard})
 	if status != 0 {
 		t.Fatalf("status = %d", status)
 	}
-	if got := readLines(t, argsFile); !reflect.DeepEqual(got, []string{"-Syu", "--repo"}) {
+	if got := readLines(t, argsFile); !reflect.DeepEqual(got, []string{"-Syu", "--repo", "-Qua", "--quiet"}) {
 		t.Fatalf("args = %#v", got)
 	}
 	if stdout.String() != "official prompt\n" {
@@ -226,21 +228,32 @@ kill -TERM $$
 
 func TestBuildingCommandDoesNotBypassAudit(t *testing.T) {
 	dir := t.TempDir()
-	marker := filepath.Join(dir, "paru-called")
+	calls := filepath.Join(dir, "calls")
 	paruPath := writeExecutable(t, dir, "paru", `#!/bin/sh
-: > "$MARKER"
+printf '%s\n' "$*" >> "$CALLS"
+if test "$1 $2" = "-P --order"; then
+  printf 'AUR TARGET aur-package aur-package\n'
+fi
+if test "$1" = "-G"; then
+  mkdir -p "$2/.git"
+fi
 `)
-	t.Setenv("MARKER", marker)
+	codexPath := writeExecutable(t, dir, "codex", `#!/bin/sh
+printf '{"summary":"broken","risk":"low","findings":[],"uncertainty":"","inspect":[],"action":"allow"}'
+`)
+	t.Setenv("CALLS", calls)
 	var stderr bytes.Buffer
 
-	status := run([]string{"-S", "aur-package"}, runConfig{paruPath: paruPath, stdin: strings.NewReader(""), stdout: io.Discard, stderr: &stderr})
+	status := run([]string{"-S", "aur-package"}, runConfig{paruPath: paruPath, codexPath: codexPath, statePath: filepath.Join(dir, "state.sqlite3"), cloneDir: filepath.Join(dir, "clones"), stdin: strings.NewReader("cancel\n"), stdout: io.Discard, stderr: &stderr})
 	if status == 0 {
 		t.Fatal("building command unexpectedly succeeded")
 	}
-	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("Paru building path was invoked: %v", err)
+	for _, call := range readLines(t, calls) {
+		if call == "--skipreview" {
+			t.Fatalf("final Paru build was invoked: %v", readLines(t, calls))
+		}
 	}
-	if !strings.Contains(stderr.String(), "AUR build") {
+	if !strings.Contains(stderr.String(), "read recipe commit") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
