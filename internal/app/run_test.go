@@ -189,6 +189,46 @@ while :; do sleep 1; done
 	}
 }
 
+func TestRunForwardsSignalsToChildProcessGroup(t *testing.T) {
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready")
+	grandchildDone := filepath.Join(dir, "grandchild-done")
+	paruPath := writeExecutable(t, dir, "paru", `#!/bin/sh
+trap 'exit 23' TERM
+(
+  trap 'printf grandchild > "$GRANDCHILD_DONE"; exit 0' TERM
+  while :; do sleep 1; done
+) &
+: > "$READY_FILE"
+while :; do sleep 1; done
+`)
+	t.Setenv("READY_FILE", ready)
+	t.Setenv("GRANDCHILD_DONE", grandchildDone)
+	signals := make(chan os.Signal, 1)
+	result := make(chan int, 1)
+	go func() {
+		result <- run([]string{"-Q"}, runConfig{
+			paruPath: paruPath,
+			stdin:    strings.NewReader(""),
+			stdout:   io.Discard,
+			stderr:   io.Discard,
+			signals:  signals,
+		})
+	}()
+
+	waitForFile(t, ready)
+	signals <- syscall.SIGTERM
+	select {
+	case status := <-result:
+		if status != 23 {
+			t.Fatalf("status = %d, want 23", status)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("child did not receive SIGTERM")
+	}
+	waitForFile(t, grandchildDone)
+}
+
 func TestBareUpdateRunsOfficialPhaseWithoutCodex(t *testing.T) {
 	dir := t.TempDir()
 	argsFile := filepath.Join(dir, "args")
@@ -391,20 +431,64 @@ exit 1
 	}
 }
 
+func TestParuPlanRejectsSRCINFORecordsBeforeExecution(t *testing.T) {
+	result := orderResult{Records: []orderRecord{{Kind: "SRCINFO", Fields: []string{"TARGET", "hello", "hello", "pkgver", "1"}}}}
+	if _, err := result.plan(); err == nil || !strings.Contains(err.Error(), "SRCINFO") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestParuPlanSupportsVariableLengthAURSplitRecords(t *testing.T) {
+	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"TARGET", "split-member", "split-base", "extra", "metadata"}}}}
+	plan, err := result.plan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(plan.AURPkgbases, []string{"split-base"}) {
+		t.Fatalf("pkgbases = %#v", plan.AURPkgbases)
+	}
+	if !reflect.DeepEqual(plan.AURTargetsByPkgbase["split-base"], []string{"split-member"}) {
+		t.Fatalf("targets = %#v", plan.AURTargetsByPkgbase)
+	}
+	if err := result.ensureTargetsClassified([]string{"split-member"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParuOrderRejectsIncompatibleRecords(t *testing.T) {
 	for _, output := range []string{
+		"",
 		"INSTALL DEP core glibc\n",
 		"REPO TARGET only-two-fields\n",
+		"SRCINFO TARGET hello hello extra\n",
 		"MISSING\n",
 	} {
-		t.Run(strings.Fields(output)[0], func(t *testing.T) {
+		name := "empty"
+		if fields := strings.Fields(output); len(fields) > 0 {
+			name = fields[0]
+		}
+		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			paruPath := writeExecutable(t, dir, "paru", "#!/bin/sh\nprintf '%s' '"+output+"'\nexit 0\n")
 			client := paruClient{config: runConfig{paruPath: paruPath, stdin: strings.NewReader(""), stdout: io.Discard, stderr: io.Discard}}
-			if _, err := client.order([]string{"hello"}); err == nil || !strings.Contains(err.Error(), "incompatible Paru") {
+			result, err := client.order([]string{"hello"})
+			if err == nil {
+				_, err = result.plan()
+			}
+			if err == nil || !strings.Contains(err.Error(), "incompatible Paru") {
 				t.Fatalf("error = %v", err)
 			}
 		})
+	}
+}
+
+func TestParuPlanRejectsUnclassifiedRequestedTarget(t *testing.T) {
+	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"DEP", "dep", "depbase"}}}}
+	if _, err := result.plan(); err != nil {
+		t.Fatal(err)
+	}
+	if err := result.ensureTargetsClassified([]string{"hello"}); err == nil || !strings.Contains(err.Error(), "not classified") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

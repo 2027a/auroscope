@@ -43,7 +43,7 @@ go vet ./...
 AUROSCOPE_E2E_DISPOSABLE_ARCH=1 scripts/e2e-disposable-arch.sh
 ```
 
-The E2E script requires Docker and refuses to run unless the disposable guard variable is set. Its package-manager paths are private `/tmp/auroscope-e2e-*` paths inside the container.
+The disposable script requires Docker and refuses to run unless the disposable guard variable is set. It is a fake-Paru/fake-Codex integration smoke inside a disposable Arch container with private `/tmp/auroscope-e2e-*` package-manager paths. The real supported-version Paru E2E gate from the specification remains unresolved until it runs against the pinned Paru surface.
 
 ## Previous design
 

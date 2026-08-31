@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,10 @@ func (paru paruClient) runMachine(stdout io.Writer, dir string, args []string) c
 }
 
 func (paru paruClient) runInDirWithStdin(stdout io.Writer, dir string, args []string, stdin io.Reader) commandResult {
+	return paru.runInDirWithStdinEnv(stdout, dir, args, stdin, nil)
+}
+
+func (paru paruClient) runInDirWithStdinEnv(stdout io.Writer, dir string, args []string, stdin io.Reader, env []string) commandResult {
 	config := paru.config.withDefaults()
 	if stdout == nil {
 		stdout = config.stdout
@@ -53,6 +58,9 @@ func (paru paruClient) runInDirWithStdin(stdout io.Writer, dir string, args []st
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = config.stderr
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	return execute(config, cmd)
 }
 
@@ -159,6 +167,9 @@ func (paru paruClient) pendingAURUpdates() ([]string, error) {
 }
 
 func (result orderResult) plan() (resolvedPlan, error) {
+	if len(result.Records) == 0 {
+		return resolvedPlan{}, incompatibleParu("order emitted no records")
+	}
 	seenRepo := map[string]bool{}
 	seenAUR := map[string]bool{}
 	seenAURTarget := map[string]map[string]bool{}
@@ -189,16 +200,40 @@ func (result orderResult) plan() (resolvedPlan, error) {
 			}
 		case "MISSING", "CONFLICT":
 			return resolvedPlan{}, fmt.Errorf("Paru resolution reported %s: %s", record.Kind, strings.Join(record.Fields, " "))
+		case "SRCINFO":
+			return resolvedPlan{}, incompatibleParu("order emitted unsupported SRCINFO record")
 		}
 	}
 	return plan, nil
 }
 
+func (result orderResult) ensureTargetsClassified(targets []string) error {
+	recordsByTarget := map[string]bool{}
+	for _, record := range result.Records {
+		if (record.Kind == "REPO" || record.Kind == "AUR") && record.Fields[0] == "TARGET" {
+			recordsByTarget[record.Fields[1]] = true
+			if record.Kind == "REPO" {
+				recordsByTarget[record.Fields[2]] = true
+			}
+		}
+	}
+	for _, target := range targets {
+		if !recordsByTarget[target] {
+			return incompatibleParu("requested target %q was not classified", target)
+		}
+	}
+	return nil
+}
+
 func validateOrderRecord(fields []string) error {
 	switch fields[0] {
-	case "REPO", "AUR":
+	case "REPO":
 		if len(fields) != 4 || !validPackageRole(fields[1]) {
 			return incompatibleParu("malformed %s order record %q", fields[0], strings.Join(fields, " "))
+		}
+	case "AUR":
+		if len(fields) < 4 || !validPackageRole(fields[1]) {
+			return incompatibleParu("malformed AUR order record %q", strings.Join(fields, " "))
 		}
 	case "SRCINFO":
 		if len(fields) != 6 || !validPackageRole(fields[1]) {
@@ -236,8 +271,8 @@ func (paru paruClient) acquire(pkgbase, cloneDir string) error {
 	return nil
 }
 
-func (paru paruClient) finalInstall(args []string) commandResult {
-	return paru.run(nil, args)
+func (paru paruClient) finalInstall(args []string, env []string) commandResult {
+	return paru.runInDirWithStdinEnv(nil, "", args, paru.config.withDefaults().stdin, env)
 }
 
 func worktreePath(cloneDir, pkgbase string) (string, error) {

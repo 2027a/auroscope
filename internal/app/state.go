@@ -33,6 +33,10 @@ func openState(path string) (*stateStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := enforceStateFileModes(path); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
@@ -83,6 +87,9 @@ func (s *stateStore) baseline(pkgbase string) (*packageBaseline, error) {
 }
 
 func (s *stateStore) recordAudit(pkgbase string, identity recipeIdentity, previousCommit string, report auditReport, decision string) error {
+	if err := validateStateIdentity(identity); err != nil {
+		return err
+	}
 	raw, err := json.Marshal(report)
 	if err != nil {
 		return err
@@ -101,6 +108,9 @@ func (s *stateStore) advanceBaselines(identities []recipeIdentity) error {
 	}
 	defer tx.Rollback()
 	for _, identity := range identities {
+		if err := validateStateIdentity(identity); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(
 			`INSERT INTO packages(pkgbase, last_successful_commit, last_manifest_digest, updated_at)
 			 VALUES (?, ?, ?, ?)
@@ -146,6 +156,21 @@ func nullEmpty(s string) any {
 func validateStateIdentity(identity recipeIdentity) error {
 	if identity.Pkgbase == "" || !isHex(identity.Commit, 40) || !isHex(identity.ManifestDigest, 64) {
 		return fmt.Errorf("invalid identity for state")
+	}
+	return nil
+}
+
+func enforceStateFileModes(path string) error {
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if _, err := os.Stat(candidate); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if err := os.Chmod(candidate, 0o600); err != nil {
+			return err
+		}
 	}
 	return nil
 }

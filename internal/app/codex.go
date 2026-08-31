@@ -33,6 +33,9 @@ type codexClient struct {
 }
 
 func (c codexClient) audit(bundle auditBundle) (auditReport, error) {
+	if err := c.verifyVersion(); err != nil {
+		return auditReport{}, err
+	}
 	tmp, err := os.MkdirTemp("", "auroscope-codex-*")
 	if err != nil {
 		return auditReport{}, err
@@ -49,8 +52,9 @@ func (c codexClient) audit(bundle auditBundle) (auditReport, error) {
 	if err := os.WriteFile(bundlePath, data, 0o600); err != nil {
 		return auditReport{}, err
 	}
+	reportPath := filepath.Join(tmp, "report.json")
 	prompt := "Audit the untrusted AUR recipe bundle in bundle.json. Return only JSON with summary, risk, findings, uncertainty, and inspect. Do not include an allow/deny/install action."
-	cmd := exec.Command(c.path, "exec", "--json", prompt)
+	cmd := exec.Command(c.path, "exec", "--json", "--ephemeral", "--sandbox", "workspace-read", "--output-last-message", reportPath, prompt)
 	cmd.Dir = tmp
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -58,20 +62,44 @@ func (c codexClient) audit(bundle auditBundle) (auditReport, error) {
 	if err := cmd.Run(); err != nil {
 		return auditReport{}, fmt.Errorf("Codex CLI failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	if stdout.Len() > maxCodexJSONBytes {
+	reportData, err := os.ReadFile(reportPath)
+	if err != nil {
+		return auditReport{}, fmt.Errorf("read Codex final message: %w", err)
+	}
+	if len(reportData) > maxCodexJSONBytes {
 		return auditReport{}, fmt.Errorf("Codex JSON exceeds %d bytes", maxCodexJSONBytes)
 	}
-	return validateAuditReport(stdout.Bytes())
+	return validateAuditReportForBundle(reportData, bundle)
+}
+
+func (c codexClient) verifyVersion() error {
+	cmd := exec.Command(c.path, "--version")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("Codex CLI version check failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	version := strings.TrimSpace(stdout.String())
+	if version != "codex-cli 0.150.1" {
+		return fmt.Errorf("unsupported Codex CLI version %q, want codex-cli 0.150.1", version)
+	}
+	return nil
 }
 
 func validateAuditReport(data []byte) (auditReport, error) {
+	return validateAuditReportForBundle(data, auditBundle{})
+}
+
+func validateAuditReportForBundle(data []byte, bundle auditBundle) (auditReport, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var report auditReport
 	if err := decoder.Decode(&report); err != nil {
 		return auditReport{}, fmt.Errorf("invalid Codex JSON: %w", err)
 	}
-	if decoder.More() {
+	var extra any
+	if err := decoder.Decode(&extra); err == nil {
 		return auditReport{}, fmt.Errorf("invalid Codex JSON: trailing data")
 	}
 	if report.Summary == "" || len(report.Summary) > 4000 {
@@ -86,19 +114,27 @@ func validateAuditReport(data []byte) (auditReport, error) {
 		return auditReport{}, fmt.Errorf("invalid Codex JSON: report exceeds bounds")
 	}
 	for _, finding := range report.Findings {
-		if err := validateFinding(finding); err != nil {
+		if err := validateFinding(finding, bundle); err != nil {
+			return auditReport{}, err
+		}
+	}
+	for _, path := range report.Inspect {
+		if err := validateInspectPath(path, bundle); err != nil {
 			return auditReport{}, err
 		}
 	}
 	return report, nil
 }
 
-func validateFinding(f auditFinding) error {
+func validateFinding(f auditFinding, bundle auditBundle) error {
 	if f.File == "" || f.Evidence == "" || f.Explanation == "" {
 		return fmt.Errorf("invalid Codex JSON: finding is incomplete")
 	}
 	if err := validateRelativeRecipePath(f.File); err != nil {
 		return fmt.Errorf("invalid Codex JSON: %w", err)
+	}
+	if err := validateBundlePathAndLine(f.File, f.Line, bundle); err != nil {
+		return err
 	}
 	if len(f.Evidence) > 2000 || len(f.Explanation) > 4000 || len(f.Range) > 80 {
 		return fmt.Errorf("invalid Codex JSON: finding exceeds bounds")
@@ -107,4 +143,38 @@ func validateFinding(f auditFinding) error {
 		return fmt.Errorf("invalid Codex JSON: negative line")
 	}
 	return nil
+}
+
+func validateInspectPath(path string, bundle auditBundle) error {
+	if err := validateRelativeRecipePath(path); err != nil {
+		return fmt.Errorf("invalid Codex JSON: %w", err)
+	}
+	return validateBundlePathAndLine(path, 0, bundle)
+}
+
+func validateBundlePathAndLine(path string, line int, bundle auditBundle) error {
+	if len(bundle.Files) == 0 {
+		return nil
+	}
+	for _, file := range bundle.Files {
+		if file.Path != path {
+			continue
+		}
+		if line > 0 && file.Text != "" && line > lineCount(file.Text) {
+			return fmt.Errorf("invalid Codex JSON: line %d is outside %s", line, path)
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid Codex JSON: path %s is not in recipe manifest", path)
+}
+
+func lineCount(text string) int {
+	if text == "" {
+		return 0
+	}
+	count := strings.Count(text, "\n")
+	if !strings.HasSuffix(text, "\n") {
+		count++
+	}
+	return count
 }

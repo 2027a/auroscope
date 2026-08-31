@@ -59,9 +59,23 @@ GOCACHE=/tmp/auroscope-gocache GOMODCACHE=/tmp/auroscope-gomodcache CGO_ENABLED=
 
 cat > /tmp/fake-codex <<'EOF'
 #!/bin/sh
+if test "$1" = "--version"; then
+  printf 'codex-cli 0.150.1\n'
+  exit 0
+fi
 test "$PWD" != /home/builder/aur/hello
 test -f bundle.json
-printf '{"summary":"disposable audit","risk":"low","findings":[],"uncertainty":"","inspect":["PKGBUILD"]}'
+out=''
+while test "$#" -gt 0; do
+  if test "$1" = "--output-last-message"; then
+    shift
+    out="$1"
+  fi
+  shift || true
+done
+test -n "$out"
+printf '{"event":"jsonl stdout ignored by AURoscope"}\n'
+printf '{"summary":"disposable audit","risk":"low","findings":[],"uncertainty":"","inspect":["PKGBUILD"]}' > "$out"
 EOF
 chmod +x /tmp/fake-codex
 
@@ -93,16 +107,13 @@ if test "$1" = "-G"; then
   exit 0
 fi
 if test "$1" = "-S"; then
-  conf=''
-  while test "$#" -gt 0; do
-    if test "$1" = "--config"; then
-      shift
-      conf="$1"
-    fi
-    shift || true
-  done
-  test -n "$conf"
-  hook=$(sed -n 's/^PreBuildCommand = //p' "$conf")
+  test -n "${PARU_CONF:-}"
+  if printf '%s\n' "$*" | grep -q -- '--config'; then
+    exit 88
+  fi
+  grep -q '^CloneDir = /tmp/auroscope-e2e-clones$' "$PARU_CONF"
+  grep -q '^\[bin\]$' "$PARU_CONF"
+  hook=$(sed -n 's/^PreBuildCommand = //p' "$PARU_CONF")
   cd /tmp/auroscope-e2e-clones/hello
   PKGBASE=hello sh -c "$hook"
   exit 0
@@ -122,8 +133,8 @@ printf 'approve\n' | env \
   2>/tmp/auroscope-e2e-stderr \
   || { cat /tmp/auroscope-e2e-stderr >&2; exit 1; }
 
-grep -q -- '-S --skipreview --config' /tmp/auroscope-e2e-paru-calls
+grep -q -- '-S --skipreview hello' /tmp/auroscope-e2e-paru-calls
 grep -q 'AUR audit: hello' /tmp/auroscope-e2e-stdout
 
-echo 'disposable Arch E2E passed'
+echo 'disposable Arch fake-Paru integration smoke passed; real supported-version Paru E2E remains unresolved'
 BASH

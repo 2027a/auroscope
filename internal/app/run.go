@@ -291,6 +291,13 @@ type commandResult struct {
 }
 
 func execute(config runConfig, cmd *exec.Cmd) commandResult {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if stdin, ok := cmd.Stdin.(*os.File); ok {
+		if info, err := stdin.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+			cmd.SysProcAttr.Foreground = true
+			cmd.SysProcAttr.Ctty = int(stdin.Fd())
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		return commandResult{status: -1, err: err}
 	}
@@ -305,7 +312,9 @@ func execute(config runConfig, cmd *exec.Cmd) commandResult {
 						return
 					}
 					if sig != nil {
-						_ = cmd.Process.Signal(sig)
+						if signalNumber, ok := sig.(syscall.Signal); ok {
+							_ = syscall.Kill(-cmd.Process.Pid, signalNumber)
+						}
 					}
 				case <-done:
 					return
