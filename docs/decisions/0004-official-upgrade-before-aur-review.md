@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on 2026-08-30; amended by [ADR-0015](0015-minimal-llm-first-wrapper.md). The native official-update-first boundary remains active. AUR dependency closure and final execution are delegated to Paru under ADR-0015 rather than implemented by AURoscope.
+Accepted on 2026-08-30; amended by [ADR-0019](0019-minimal-llm-first-wrapper.md). The native official-update-first boundary remains active. AUR dependency closure and final execution are delegated to Paru under ADR-0019 rather than implemented by AURoscope.
 
 Decision issue: [#4](https://git.2027a.net/2027a/auroscope/issues/4). Mathieu authorized the latest concrete proposal with an exact [`GO DECISION`](https://git.2027a.net/2027a/auroscope/issues/4#issuecomment-1200).
 

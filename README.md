@@ -31,7 +31,7 @@ AURoscope does not replace Paru's search UI, resolver, build machinery, or Pacma
 - One internal Go package initially; split only when demonstrated behavior requires it.
 - No deterministic rule engine, plugin system, build sandbox, cached artifact reuse, or same-UID security protocol.
 
-The accepted architecture is in [`docs/architecture/minimal-v1.md`](docs/architecture/minimal-v1.md) and [`ADR-0015`](docs/decisions/0015-minimal-llm-first-wrapper.md). A narrow disposable-Arch Paru worktree spike must be completed before the new implementation plan is written.
+The accepted architecture is in [`docs/architecture/minimal-v1.md`](docs/architecture/minimal-v1.md) and [`ADR-0019`](docs/decisions/0019-minimal-llm-first-wrapper.md). A narrow disposable-Arch Paru worktree spike must be completed before the new implementation plan is written.
 
 ## Previous design
 

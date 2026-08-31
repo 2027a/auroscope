@@ -33,9 +33,9 @@ AURoscope must preserve Paru's native selection and resolver while obtaining a m
 - A benign local `paru -B` with layered config confirmed the final `PreBuildCommand` override, but Paru generated `.SRCINFO` through makepkg before that hook.
 - A configured marker-writing PKGBUILD repository with `PkgbuildsOnly` and `GenerateSrcinfo` remained unexecuted when trusted CLI flags `--repo --mode=aur` were injected; the marker was absent, confirming config mode was reset then limited to repo+AUR on commit `9ac3578`.
 
-## Current use under ADR-0015
+## Current use under ADR-0019
 
-These findings are historical evidence, not a complete active adapter contract. The first executable task must revalidate one supported Paru version and prove the exact native search/selection, AUR worktree, edit/re-audit, skip/exclusion, final build, and `PreBuildCommand` path required by [ADR-0015](../decisions/0015-minimal-llm-first-wrapper.md). Do not carry forward the transitional human-menu parser, broad mode classifier, or closure machinery merely because they were explored here.
+These findings are historical evidence, not a complete active adapter contract. The first executable task must revalidate one supported Paru version and prove the exact native search/selection, AUR worktree, edit/re-audit, skip/exclusion, final build, and `PreBuildCommand` path required by [ADR-0019](../decisions/0019-minimal-llm-first-wrapper.md). Do not carry forward the transitional human-menu parser, broad mode classifier, or closure machinery merely because they were explored here.
 
 ## Sources consulted
 

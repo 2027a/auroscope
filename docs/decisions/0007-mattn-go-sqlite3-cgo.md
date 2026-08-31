@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on 2026-08-30; amended by [ADR-0015](0015-minimal-llm-first-wrapper.md). The `mattn/go-sqlite3 v1.14.50` CGO driver choice remains active. Broader backup, recovery, concurrency, and retention obligations are superseded unless the minimal state implementation demonstrates a concrete need.
+Accepted on 2026-08-30; amended by [ADR-0019](0019-minimal-llm-first-wrapper.md). The `mattn/go-sqlite3 v1.14.50` CGO driver choice remains active. Broader backup, recovery, concurrency, and retention obligations are superseded unless the minimal state implementation demonstrates a concrete need.
 
 Accepted by Mathieu in [decision issue #7](https://git.2027a.net/2027a/auroscope/issues/7) after the concrete proposal in [comment 1111](https://git.2027a.net/2027a/auroscope/issues/7#issuecomment-1111) and the explicit `GO DECISION` in [comment 1124](https://git.2027a.net/2027a/auroscope/issues/7#issuecomment-1124).
 

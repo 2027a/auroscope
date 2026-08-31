@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by [ADR-0015](0015-minimal-llm-first-wrapper.md) on 2026-08-30. The original decision was accepted on 2026-08-30; its human-menu compatibility clause was later amended by [ADR-0002](0002-paru-native-selection-compatibility.md).
+Superseded by [ADR-0019](0019-minimal-llm-first-wrapper.md) on 2026-08-30. The original decision was accepted on 2026-08-30; its human-menu compatibility clause was later amended by [ADR-0002](0002-paru-native-selection-compatibility.md).
 
 Decision issue: [#3](https://git.2027a.net/2027a/auroscope/issues/3). Mathieu authorized this exact decision with [`GO DECISION`](https://git.2027a.net/2027a/auroscope/issues/3#issuecomment-1119).
 

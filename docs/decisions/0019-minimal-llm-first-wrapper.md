@@ -1,4 +1,4 @@
-# ADR-0015: Minimal LLM-first Paru wrapper
+# ADR-0019: Minimal LLM-first Paru wrapper
 
 ## Status
 
@@ -9,6 +9,31 @@ Accepted on 2026-08-30 through [decision issue #19](https://git.2027a.net/2027a/
 AURoscope's previous design treated deterministic scanning as the core and LLM analysis as optional. It then accumulated a multi-stage closure protocol, broad SQLite lifecycle model, durable one-shot approvals, extensive recovery and retention, multiple inference backends, and many package boundaries.
 
 That architecture no longer matched the product. AURoscope exists to add one LLM audit and one human decision between Paru's selection of an AUR recipe and Paru's normal build/install path.
+
+## Options considered
+
+### A. Keep the layered design
+
+Retain deterministic scanning, optional HTTP/Codex backends, durable approvals, broad state/recovery, local closure comparison, and the eleven-package Go architecture.
+
+- Advantage: preserves the broadest evidence and recovery surface.
+- Cost: keeps the LLM off the defining path and makes AURoscope a partial package manager.
+
+### B. Reduce selected infrastructure
+
+Remove some recovery and abstraction layers while retaining the deterministic scanner, optional LLM, and durable transaction model.
+
+- Advantage: less migration from the prior design.
+- Cost: preserves most interacting state machines and the wrong product center.
+
+### C. Minimal LLM-first wrapper
+
+Use Codex CLI as the required v1 audit, retain one human decision per AUR package base, keep only baseline/audit persistence and a narrow identity guard, and delegate the package transaction to Paru/Pacman.
+
+- Advantage: directly implements the product with the smallest understandable boundary.
+- Cost: v1 depends on Codex and omits the broader scanner, backend, recovery, and replay features.
+
+**Recommendation and decision:** choose option C.
 
 ## Decision
 
@@ -72,3 +97,7 @@ ADR-0001 (Go/package), ADR-0004 (official update first), ADR-0005 (final recipe 
 - Replace Paru/libalpm: rejected because AURoscope is not a package manager.
 - Add HTTP and Codex simultaneously: rejected because one personal v1 backend is enough.
 - Remove final identity verification: rejected because Paru must build the recipe that Codex and the user reviewed.
+
+## Unresolved risk
+
+The first executable spike must prove that the supported Paru surface exposes the exact worktree before recipe code and reuses it for the final build, including after editing. If it does not, the implementation may adjust only the narrow Paru integration or defer `edit`; it must not recreate a resolver or general transaction protocol.

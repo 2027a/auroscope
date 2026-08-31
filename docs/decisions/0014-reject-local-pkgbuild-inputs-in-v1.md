@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by [ADR-0015](0015-minimal-llm-first-wrapper.md) on 2026-08-30.
+Superseded by [ADR-0019](0019-minimal-llm-first-wrapper.md) on 2026-08-30.
 
 Decision issue: [#14](https://git.2027a.net/2027a/auroscope/issues/14). Mathieu authorized the final proposal with [`GO DECISION`](https://git.2027a.net/2027a/auroscope/issues/14#issuecomment-1173).
 

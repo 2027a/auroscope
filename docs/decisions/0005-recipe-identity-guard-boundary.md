@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on 2026-08-30; amended by [ADR-0015](0015-minimal-llm-first-wrapper.md). The final exact recipe-identity check and `--skipreview` boundary remain active. The former durable approval/atomic-claim machinery is superseded.
+Accepted on 2026-08-30; amended by [ADR-0019](0019-minimal-llm-first-wrapper.md). The final exact recipe-identity check and `--skipreview` boundary remain active. The former durable approval/atomic-claim machinery is superseded.
 
 ## Context
 

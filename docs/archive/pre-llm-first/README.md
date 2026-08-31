@@ -1,6 +1,6 @@
 # Pre-LLM-first architecture archive
 
-This directory preserves the design that preceded [ADR-0015](../../decisions/0015-minimal-llm-first-wrapper.md).
+This directory preserves the design that preceded [ADR-0019](../../decisions/0019-minimal-llm-first-wrapper.md).
 
 It is historical evidence only. It must not guide new implementation work unless a current source explicitly cites a narrow dependency fact.
 

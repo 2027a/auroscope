@@ -20,7 +20,7 @@ AURoscope has one purpose: audit exact AUR recipe changes with Codex CLI before 
 - AURoscope keeps only minimal audit/baseline state and a final recipe-identity guard.
 - The local machine and account are trusted.
 
-See [`architecture/minimal-v1.md`](architecture/minimal-v1.md), [`specification.md`](specification.md), and [`ADR-0015`](decisions/0015-minimal-llm-first-wrapper.md).
+See [`architecture/minimal-v1.md`](architecture/minimal-v1.md), [`specification.md`](specification.md), and [`ADR-0019`](decisions/0019-minimal-llm-first-wrapper.md).
 
 ## Required spike
 

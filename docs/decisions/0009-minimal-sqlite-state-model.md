@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by [ADR-0015](0015-minimal-llm-first-wrapper.md) on 2026-08-30.
+Superseded by [ADR-0019](0019-minimal-llm-first-wrapper.md) on 2026-08-30.
 
 Accepted by Mathieu in [decision issue #9](https://git.2027a.net/2027a/auroscope/issues/9) after the concrete C-minimal proposal in [comment 1112](https://git.2027a.net/2027a/auroscope/issues/9#issuecomment-1112) and the explicit `GO DECISION` in [comment 1207](https://git.2027a.net/2027a/auroscope/issues/9#issuecomment-1207).
 

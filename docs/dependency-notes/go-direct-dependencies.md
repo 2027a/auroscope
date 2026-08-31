@@ -1,6 +1,6 @@
 # Superseded direct dependency proposal
 
-The TOML and shellwords choices belonged to the architecture superseded by [ADR-0015](../decisions/0015-minimal-llm-first-wrapper.md).
+The TOML and shellwords choices belonged to the architecture superseded by [ADR-0019](../decisions/0019-minimal-llm-first-wrapper.md).
 
 Historical note: [`../archive/pre-llm-first/go-direct-dependencies.md`](../archive/pre-llm-first/go-direct-dependencies.md).
 
