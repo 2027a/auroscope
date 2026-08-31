@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
@@ -18,16 +19,18 @@ const (
 )
 
 type runConfig struct {
-	paruPath    string
-	codexPath   string
-	statePath   string
-	cloneDir    string
-	editorPath  string
-	stdin       io.Reader
-	reviewInput io.Reader
-	stdout      io.Writer
-	stderr      io.Writer
-	signals     <-chan os.Signal
+	paruPath     string
+	codexPath    string
+	statePath    string
+	cloneDir     string
+	editorPath   string
+	codexModel   string
+	codexTimeout time.Duration
+	stdin        io.Reader
+	reviewInput  io.Reader
+	stdout       io.Writer
+	stderr       io.Writer
+	signals      <-chan os.Signal
 }
 
 // Run executes AURoscope with the process terminal and forwards termination
@@ -95,6 +98,20 @@ func (config runConfig) withDefaults() runConfig {
 	}
 	if config.editorPath == "" {
 		config.editorPath = os.Getenv("EDITOR")
+	}
+	if config.codexModel == "" {
+		config.codexModel = os.Getenv("AUROSCOPE_CODEX_MODEL")
+		if config.codexModel == "" {
+			config.codexModel = defaultCodexModel
+		}
+	}
+	if config.codexTimeout <= 0 {
+		config.codexTimeout = defaultCodexTimeout
+		if raw := os.Getenv("AUROSCOPE_CODEX_TIMEOUT"); raw != "" {
+			if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+				config.codexTimeout = parsed
+			}
+		}
 	}
 	if config.cloneDir == "" {
 		config.cloneDir = os.Getenv("AUROSCOPE_CLONE_DIR")

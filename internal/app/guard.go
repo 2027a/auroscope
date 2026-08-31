@@ -4,7 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
+
+type transactionApproval struct {
+	recipeIdentity
+	Worktree string `json:"worktree"`
+}
 
 func runGuard(txPath, worktree string) error {
 	if worktree == "" {
@@ -22,11 +28,11 @@ func runGuard(txPath, worktree string) error {
 	if err != nil {
 		return fmt.Errorf("read transaction file: %w", err)
 	}
-	var approved []recipeIdentity
+	var approved []transactionApproval
 	if err := json.Unmarshal(data, &approved); err != nil {
 		return fmt.Errorf("parse transaction file: %w", err)
 	}
-	var expected *recipeIdentity
+	var expected *transactionApproval
 	for i := range approved {
 		if approved[i].Pkgbase == pkgbase {
 			expected = &approved[i]
@@ -36,7 +42,14 @@ func runGuard(txPath, worktree string) error {
 	if expected == nil {
 		return fmt.Errorf("unexpected pkgbase %q", pkgbase)
 	}
-	actual, _, err := readRecipeIdentity(pkgbase, worktree)
+	actualWorktree, err := canonicalWorktree(worktree)
+	if err != nil {
+		return fmt.Errorf("resolve guard worktree: %w", err)
+	}
+	if actualWorktree != expected.Worktree {
+		return fmt.Errorf("unexpected worktree for %s: got %q want %q", pkgbase, actualWorktree, expected.Worktree)
+	}
+	actual, _, err := readRecipeIdentity(pkgbase, actualWorktree)
 	if err != nil {
 		return err
 	}
@@ -44,4 +57,12 @@ func runGuard(txPath, worktree string) error {
 		return fmt.Errorf("recipe identity drift for %s: got %s/%s want %s/%s", pkgbase, actual.Commit, actual.ManifestDigest, expected.Commit, expected.ManifestDigest)
 	}
 	return nil
+}
+
+func canonicalWorktree(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
 }

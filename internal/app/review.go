@@ -145,7 +145,7 @@ func (o orchestrator) reviewPackage(store *stateStore, pkgbase string, reader *b
 		if err != nil {
 			return reviewedPackage{}, err
 		}
-		report, err := (codexClient{path: o.config.codexPath}).audit(bundle)
+		report, err := (codexClient{path: o.config.codexPath, model: o.config.codexModel, timeout: o.config.codexTimeout}).audit(bundle)
 		if err != nil {
 			fmt.Fprintf(o.config.stderr, "auroscope: audit failed for %s: %v\n", pkgbase, err)
 			switch askDecision(reader, o.config, []string{"retry", "skip", "cancel"}) {
@@ -191,7 +191,9 @@ func printReview(config runConfig, pkgbase string, bundle auditBundle, report au
 	fmt.Fprintf(config.stdout, "\nAUR audit: %s\ncommit: %s\nmanifest: %s\nrisk: %s\n%s\n", escapeTerminal(pkgbase), bundle.Identity.Commit, bundle.Identity.ManifestDigest, escapeTerminal(report.Risk), escapeTerminal(report.Summary))
 	for _, finding := range report.Findings {
 		location := escapeTerminal(finding.File)
-		if finding.Line > 0 {
+		if finding.LineStart > 0 {
+			location = fmt.Sprintf("%s:%d-%d", location, finding.LineStart, finding.LineEnd)
+		} else if finding.Line > 0 {
 			location = fmt.Sprintf("%s:%d", location, finding.Line)
 		}
 		if finding.Range != "" {
@@ -199,12 +201,15 @@ func printReview(config runConfig, pkgbase string, bundle auditBundle, report au
 		}
 		fmt.Fprintf(config.stdout, "- %s\n  evidence: %s\n  explanation: %s\n", location, escapeTerminal(finding.Evidence), escapeTerminal(finding.Explanation))
 	}
-	if report.Uncertainty != "" {
-		fmt.Fprintf(config.stdout, "\nUncertainty:\n%s\n", escapeTerminal(report.Uncertainty))
+	if len(report.Uncertainties) > 0 {
+		fmt.Fprintln(config.stdout, "\nUncertainties:")
+		for _, uncertainty := range report.Uncertainties {
+			fmt.Fprintf(config.stdout, "- %s\n", escapeTerminal(uncertainty))
+		}
 	}
-	if len(report.Inspect) > 0 {
-		fmt.Fprintln(config.stdout, "\nInspect:")
-		for _, path := range report.Inspect {
+	if len(report.SuggestedInspection) > 0 {
+		fmt.Fprintln(config.stdout, "\nSuggested inspection:")
+		for _, path := range report.SuggestedInspection {
 			fmt.Fprintf(config.stdout, "- %s\n", escapeTerminal(path))
 		}
 	}
@@ -282,7 +287,19 @@ func writeTransactionFiles(approved []recipeIdentity, cloneDir string) (string, 
 	}
 	txPath := filepath.Join(dir, "approved.json")
 	confPath := filepath.Join(dir, "paru.conf")
-	data, err := json.MarshalIndent(approved, "", "  ")
+	transactionApprovals := make([]transactionApproval, 0, len(approved))
+	for _, identity := range approved {
+		worktree, err := worktreePath(cloneDir, identity.Pkgbase)
+		if err != nil {
+			return "", "", err
+		}
+		worktree, err = canonicalWorktree(worktree)
+		if err != nil {
+			return "", "", fmt.Errorf("resolve approved worktree for %s: %w", identity.Pkgbase, err)
+		}
+		transactionApprovals = append(transactionApprovals, transactionApproval{recipeIdentity: identity, Worktree: worktree})
+	}
+	data, err := json.MarshalIndent(transactionApprovals, "", "  ")
 	if err != nil {
 		return "", "", err
 	}
@@ -293,16 +310,52 @@ func writeTransactionFiles(approved []recipeIdentity, cloneDir string) (string, 
 	if err != nil {
 		return "", "", err
 	}
-	conf := fmt.Sprintf("[options]\nCloneDir = %s\n", cloneDir)
-	if original := os.Getenv("PARU_CONF"); original != "" {
-		conf += fmt.Sprintf("Include = %s\n", original)
+	conf := "[options]\n"
+	original, err := effectiveParuConfig()
+	if err != nil {
+		return "", "", err
 	}
+	if original != "" {
+		conf += fmt.Sprintf("Include = %s\n[options]\n", original)
+	}
+	conf += fmt.Sprintf("CloneDir = %s\n", cloneDir)
 	conf += fmt.Sprintf("\n[bin]\nPreBuildCommand = %s __guard %s\n", posixShellQuote(exe), posixShellQuote(txPath))
 	if err := os.WriteFile(confPath, []byte(conf), 0o600); err != nil {
 		return "", "", err
 	}
 	complete = true
 	return dir, confPath, nil
+}
+
+func effectiveParuConfig() (string, error) {
+	if path := os.Getenv("PARU_CONF"); path != "" {
+		if !configFileExists(path) {
+			return "", fmt.Errorf("PARU_CONF does not name a regular readable config file: %s", path)
+		}
+		return path, nil
+	}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		if path := filepath.Join(xdg, "paru", "paru.conf"); configFileExists(path) {
+			return path, nil
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if path := filepath.Join(home, ".config", "paru", "paru.conf"); configFileExists(path) {
+			return path, nil
+		}
+	}
+	if configFileExists("/etc/paru.conf") {
+		return "/etc/paru.conf", nil
+	}
+	return "", nil
+}
+
+func configFileExists(path string) bool {
+	if strings.ContainsAny(path, "\x00\r\n") {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func posixShellQuote(s string) string {

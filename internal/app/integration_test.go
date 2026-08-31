@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -19,7 +20,7 @@ func TestApprovedAURPackageEndToEndWithFirstAudit(t *testing.T) {
 	repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\npkgver=1\n")
 	calls := filepath.Join(dir, "calls")
 	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET hello hello\n")
-	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"looks bounded","risk":"low","findings":[],"uncertainty":"","inspect":["PKGBUILD"]}`)
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"looks bounded","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":["PKGBUILD"]}`)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -83,12 +84,16 @@ exit 0
 	t.Setenv("RECIPE_REPO", repo)
 	t.Setenv("PARU_CONF_ENV", envFile)
 	t.Setenv("PARU_CONF_COPY", confCopy)
-	t.Setenv("PARU_CONF", filepath.Join(dir, "trusted-original-paru.conf"))
+	originalConfig := filepath.Join(dir, "trusted-original-paru.conf")
+	if err := os.WriteFile(originalConfig, []byte("[options]\nBottomUp\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PARU_CONF", originalConfig)
 	cloneDir := filepath.Join(dir, "clones")
 
 	status := run([]string{"-S", "hello"}, runConfig{
 		paruPath:    paruPath,
-		codexPath:   fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"handoff reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`),
+		codexPath:   fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"handoff reviewed","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[]}`),
 		statePath:   filepath.Join(dir, "state.sqlite3"),
 		cloneDir:    cloneDir,
 		stdin:       strings.NewReader(""),
@@ -123,17 +128,20 @@ exit 0
 func TestDifferentialAuditUsesSuccessfulBaseline(t *testing.T) {
 	dir := t.TempDir()
 	repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\npkgver=1\n")
-	firstCommit := gitTrim(t, repo, "rev-parse", "HEAD")
+	firstIdentity, _, err := readRecipeIdentity("hello", repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstCommit := firstIdentity.Commit
 	appendRecipeCommit(t, repo, "pkgrel=2\n")
 	calls := filepath.Join(dir, "calls")
 	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET hello hello\n")
 	bundlePath := filepath.Join(dir, "bundle.json")
-	codexPath := fakeCodex(t, dir, bundlePath, `{"summary":"diff reviewed","risk":"medium","findings":[{"file":"PKGBUILD","line":3,"evidence":"pkgrel","explanation":"changed release"}],"uncertainty":"","inspect":[]}`)
+	codexPath := fakeCodex(t, dir, bundlePath, `{"summary":"diff reviewed","risk":"medium","findings":[{"file":"PKGBUILD","line_start":3,"line_end":3,"evidence":"pkgrel","explanation":"changed release"}],"uncertainties":[],"suggested_inspection":[]}`)
 	store, err := openState(filepath.Join(dir, "state.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstIdentity := recipeIdentity{Pkgbase: "hello", Commit: firstCommit, ManifestDigest: strings.Repeat("a", 64)}
 	if err := store.advanceBaselines([]recipeIdentity{firstIdentity}); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +176,7 @@ func TestMixedInstallSkipKeepsOfficialNativeAndOmitsAUR(t *testing.T) {
 	repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
 	calls := filepath.Join(dir, "calls")
 	paruPath := fakeParu(t, dir, calls, repo, "REPO TARGET extra tree\nAUR TARGET hello hello\n")
-	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"skip me","risk":"unknown","findings":[],"uncertainty":"","inspect":[]}`)
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"skip me","risk":"unknown","findings":[],"uncertainties":[],"suggested_inspection":[]}`)
 
 	var stderr bytes.Buffer
 	status := run([]string{"-S", "tree", "hello"}, runConfig{
@@ -216,7 +224,7 @@ exit 0
 `)
 	t.Setenv("CALLS", calls)
 	t.Setenv("RECIPE_REPO", repo)
-	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"update reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"update reviewed","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[]}`)
 	status := run(nil, runConfig{
 		paruPath:    paruPath,
 		codexPath:   codexPath,
@@ -288,7 +296,7 @@ exit 0
 	t.Setenv("CALLS", calls)
 	t.Setenv("RECIPE_REPO", repo)
 	t.Setenv("DEP_RECIPE_REPO", depRepo)
-	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"dep reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"dep reviewed","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[]}`)
 	var stderr bytes.Buffer
 	status := run([]string{"-S", "target"}, runConfig{
 		paruPath:    paruPath,
@@ -313,7 +321,7 @@ func TestSplitAURRecordsAcquirePkgbaseOnceAndPreserveTarget(t *testing.T) {
 	repo := createRecipeRepo(t, dir, "split-base", "pkgbase=split-base\npkgname=('split-member' 'split-helper')\n")
 	calls := filepath.Join(dir, "calls")
 	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET split-base split-member\nAUR DEP split-base split-helper\n")
-	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"split package reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"split package reviewed","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[]}`)
 
 	status := run([]string{"-S", "split-member"}, runConfig{
 		paruPath:    paruPath,
@@ -408,13 +416,16 @@ if test "$1" = "-G"; then
   exit 0
 fi
 if test "$1" = "-S"; then
+  printf '%s' "${PARU_CONF:-}" > "$TX_CONF_CAPTURE"
   exit 37
 fi
 exit 0
 `)
 	t.Setenv("CALLS", calls)
 	t.Setenv("RECIPE_REPO", repo)
-	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+	txConfCapture := filepath.Join(dir, "failed-final-paru-conf")
+	t.Setenv("TX_CONF_CAPTURE", txConfCapture)
+	codexPath := fakeCodex(t, dir, filepath.Join(dir, "bundle.json"), `{"summary":"reviewed","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[]}`)
 	statePath := filepath.Join(dir, "state.sqlite3")
 	status := run([]string{"-S", "hello"}, runConfig{
 		paruPath:    paruPath,
@@ -428,6 +439,13 @@ exit 0
 	})
 	if status != 37 {
 		t.Fatalf("status = %d", status)
+	}
+	failedConfPath := readString(t, txConfCapture)
+	if failedConfPath == "" {
+		t.Fatal("final Paru did not receive PARU_CONF")
+	}
+	if _, err := os.Stat(filepath.Dir(failedConfPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed final transaction directory was not cleaned; stat err = %v", err)
 	}
 	db, err := sql.Open("sqlite3", statePath)
 	if err != nil {
@@ -449,12 +467,12 @@ func TestEditSnapshotsAndReauditsSameWorktree(t *testing.T) {
 	calls := filepath.Join(dir, "calls")
 	paruPath := fakeParu(t, dir, calls, repo, "AUR TARGET hello hello\n")
 	codexCalls := filepath.Join(dir, "codex-calls")
-	codexPath := writeExecutable(t, dir, "codex", `#!/bin/sh
+	codexScript := fmt.Sprintf(`#!/bin/sh
 if test "$1" = "--version"; then
   printf 'codex-cli 0.150.1\n'
   exit 0
 fi
-printf 'call\n' >> "$CODEX_CALLS"
+printf 'call\n' >> %s
 out=''
 while test "$#" -gt 0; do
   if test "$1" = "--output-last-message"; then
@@ -464,8 +482,10 @@ while test "$#" -gt 0; do
   shift || true
 done
 test -n "$out"
-printf '{"summary":"review","risk":"low","findings":[],"uncertainty":"","inspect":[]}' > "$out"
-`)
+printf '{"type":"thread.started","thread_id":"t"}\n{"type":"turn.started"}\n{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"done"}}\n{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}\n'
+printf '{"summary":"review","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[]}' > "$out"
+`, posixShellQuote(codexCalls))
+	codexPath := writeExecutable(t, dir, "codex", codexScript)
 	editorPath := writeExecutable(t, dir, "editor", `#!/bin/sh
 printf 'pkgrel=2\n' >> "$1/PKGBUILD"
 `)
@@ -506,7 +526,11 @@ func TestGuardRejectsIdentityDriftAndUnexpectedPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	txPath := filepath.Join(dir, "tx.json")
-	data, _ := json.Marshal([]recipeIdentity{identity})
+	canonical, err := canonicalWorktree(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal([]transactionApproval{{recipeIdentity: identity, Worktree: canonical}})
 	if err := os.WriteFile(txPath, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +550,7 @@ func TestGuardRejectsIdentityDriftAndUnexpectedPackage(t *testing.T) {
 	}
 }
 
-func TestRecipeManifestIncludesTrackedModeAndRejectsSymlinkAndInvalidUTF8(t *testing.T) {
+func TestRecipeManifestIncludesTrackedModeSymlinkAndInvalidUTF8(t *testing.T) {
 	dir := t.TempDir()
 	repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
 	if err := os.Chmod(filepath.Join(repo, "PKGBUILD"), 0o755); err != nil {
@@ -563,26 +587,37 @@ func TestRecipeManifestIncludesTrackedModeAndRejectsSymlinkAndInvalidUTF8(t *tes
 	}
 	gitRun(t, symlinkRepo, "add", "PKGBUILD")
 	gitRun(t, symlinkRepo, "commit", "-m", "symlink")
-	if _, _, err := readRecipeIdentity("linked", symlinkRepo); err == nil || !strings.Contains(err.Error(), "unsupported tracked mode") {
-		t.Fatalf("symlink error = %v", err)
+	_, symlinkFiles, err := readRecipeIdentity("linked", symlinkRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := recipeFileByPath(t, symlinkFiles, "PKGBUILD")
+	if linked.Mode != trackedSymlinkMode || linked.Type != trackedSymlinkType {
+		t.Fatalf("symlink manifest entry = %#v", linked)
 	}
 
 	utfRepo := createRecipeRepo(t, dir, "utf", "pkgname=utf\n")
-	if err := os.WriteFile(filepath.Join(utfRepo, "PKGBUILD"), []byte{0xff, '\n'}, 0o644); err != nil {
+	invalid := []byte{0xff, '\n'}
+	if err := os.WriteFile(filepath.Join(utfRepo, "PKGBUILD"), invalid, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	gitRun(t, utfRepo, "add", "PKGBUILD")
 	gitRun(t, utfRepo, "commit", "-m", "invalid utf8")
-	if _, _, err := readRecipeIdentity("utf", utfRepo); err == nil || !strings.Contains(err.Error(), "invalid UTF-8") {
-		t.Fatalf("utf8 error = %v", err)
+	_, utfFiles, err := readRecipeIdentity("utf", utfRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	utfFile := recipeFileByPath(t, utfFiles, "PKGBUILD")
+	if utfFile.Text != "" || decodeRecipeContent(t, utfFile) != string(invalid) {
+		t.Fatalf("invalid UTF-8 was not represented losslessly: %#v", utfFile)
 	}
 }
 
 func TestCodexValidationRejectsActionAndHostilePath(t *testing.T) {
-	if _, err := validateAuditReport([]byte(`{"summary":"x","risk":"low","findings":[],"uncertainty":"","inspect":[],"action":"allow"}`)); err == nil {
+	if _, err := validateAuditReport([]byte(`{"summary":"x","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":[],"action":"allow"}`)); err == nil {
 		t.Fatal("accepted action field")
 	}
-	_, err := validateAuditReport([]byte(`{"summary":"x","risk":"low","findings":[{"file":"../PKGBUILD","evidence":"x","explanation":"x"}],"uncertainty":"","inspect":[]}`))
+	_, err := validateAuditReport([]byte(`{"summary":"x","risk":"low","findings":[{"file":"../PKGBUILD","evidence":"x","explanation":"x"}],"uncertainties":[],"suggested_inspection":[]}`))
 	if err == nil || !strings.Contains(err.Error(), "invalid recipe path") {
 		t.Fatalf("error = %v", err)
 	}
@@ -593,32 +628,39 @@ func TestCodexExecUsesPinnedOutputLastMessageContract(t *testing.T) {
 	argsFile := filepath.Join(dir, "codex-args")
 	pwdFile := filepath.Join(dir, "codex-pwd")
 	bundleCopy := filepath.Join(dir, "bundle-copy.json")
-	codexPath := writeExecutable(t, dir, "codex", `#!/bin/sh
-if test "$1" = "--version"; then
-  printf 'codex-cli 0.150.1\n'
-  exit 0
-fi
-printf '%s\n' "$*" > "$ARGS_FILE"
-pwd > "$PWD_FILE"
-cp bundle.json "$BUNDLE_COPY"
-out=''
-while test "$#" -gt 0; do
-  if test "$1" = "--output-last-message"; then
-    shift
-    out="$1"
-  fi
-  shift || true
-done
-test -n "$out"
-printf '{"event":"jsonl stdout must be ignored"}\n'
-printf '{"summary":"from final file","risk":"low","findings":[],"uncertainty":"","inspect":["PKGBUILD"]}' > "$out"
-`)
-	t.Setenv("ARGS_FILE", argsFile)
-	t.Setenv("PWD_FILE", pwdFile)
-	t.Setenv("BUNDLE_COPY", bundleCopy)
+	script := fmt.Sprintf(`#!/usr/bin/python3
+import base64, hashlib, json, os, pathlib, sys
+if sys.argv[1:] == ["--version"]:
+    print("codex-cli 0.150.1")
+    raise SystemExit(0)
+a = sys.argv[1:]
+pathlib.Path(%s).write_text(json.dumps(a))
+pathlib.Path(%s).write_text(os.getcwd())
+prompt = sys.stdin.read()
+header, encoded = prompt.split("UNTRUSTED_AUR_BUNDLE encoding=base64 ", 1)[1].split("\n", 1)
+encoded = encoded.split("\nEND_UNTRUSTED_AUR_BUNDLE\n", 1)[0]
+meta = dict(part.split("=", 1) for part in header.split())
+decoded = base64.b64decode(encoded, validate=True)
+assert len(decoded) == int(meta["decoded_length"])
+assert len(encoded) == int(meta["encoded_length"])
+assert hashlib.sha256(decoded).hexdigest() == meta["sha256"]
+pathlib.Path(%s).write_text(json.dumps(json.loads(decoded)))
+out = pathlib.Path(a[a.index("--output-last-message") + 1])
+out.write_text('{"summary":"from final file","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":["PKGBUILD"]}')
+print(json.dumps({"type":"thread.started","thread_id":"t"}))
+print(json.dumps({"type":"turn.started"}))
+print(json.dumps({"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"done"}}))
+print(json.dumps({"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}))
+`, strconvQuote(argsFile), strconvQuote(pwdFile), strconvQuote(bundleCopy))
+	codexPath := writeExecutable(t, dir, "codex", script)
+	data := []byte("pkgname=hello\n")
+	file, err := makeRecipeFile("PKGBUILD", trackedRegularMode, data)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bundle := auditBundle{
 		Identity: recipeIdentity{Pkgbase: "hello", Commit: strings.Repeat("a", 40), ManifestDigest: strings.Repeat("b", 64)},
-		Files:    []recipeFile{{Path: "PKGBUILD", Mode: trackedRegularMode, Type: trackedRegularType, SHA256: strings.Repeat("c", 64), Size: 14, Text: "pkgname=hello\n"}},
+		Files:    []recipeFile{file},
 	}
 
 	report, err := (codexClient{path: codexPath}).audit(bundle)
@@ -628,11 +670,10 @@ printf '{"summary":"from final file","risk":"low","findings":[],"uncertainty":""
 	if report.Summary != "from final file" {
 		t.Fatalf("report = %#v", report)
 	}
-	args := readString(t, argsFile)
-	for _, want := range []string{"exec --json --ephemeral --sandbox workspace-read --output-last-message "} {
-		if !strings.Contains(args, want) {
-			t.Fatalf("args = %q", args)
-		}
+	var args []string
+	readJSON(t, argsFile, &args)
+	if !containsAdjacent(args, "--sandbox", "read-only") || containsArg(args, "workspace-read") {
+		t.Fatalf("unsafe Codex sandbox args = %#v", args)
 	}
 	if got := strings.TrimSpace(readString(t, pwdFile)); got == "" || got == dir {
 		t.Fatalf("Codex ran in unexpected dir %q", got)
@@ -653,12 +694,16 @@ printf 'codex-cli 9.9.9\n'
 	if err == nil || !strings.Contains(err.Error(), "unsupported Codex CLI version") {
 		t.Fatalf("error = %v", err)
 	}
-	bundle := auditBundle{Files: []recipeFile{{Path: "PKGBUILD", Text: "one\n"}}}
-	_, err = validateAuditReportForBundle([]byte(`{"summary":"x","risk":"low","findings":[{"file":"PKGBUILD","line":2,"evidence":"x","explanation":"x"}],"uncertainty":"","inspect":[]}`), bundle)
+	file, err := makeRecipeFile("PKGBUILD", trackedRegularMode, []byte("one\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := auditBundle{Files: []recipeFile{file}}
+	_, err = validateAuditReportForBundle([]byte(`{"summary":"x","risk":"low","findings":[{"file":"PKGBUILD","line_start":2,"line_end":2,"evidence":"x","explanation":"x"}],"uncertainties":[],"suggested_inspection":[]}`), bundle)
 	if err == nil || !strings.Contains(err.Error(), "outside PKGBUILD") {
 		t.Fatalf("line error = %v", err)
 	}
-	_, err = validateAuditReportForBundle([]byte(`{"summary":"x","risk":"low","findings":[],"uncertainty":"","inspect":["missing"]}`), bundle)
+	_, err = validateAuditReportForBundle([]byte(`{"summary":"x","risk":"low","findings":[],"uncertainties":[],"suggested_inspection":["missing"]}`), bundle)
 	if err == nil || !strings.Contains(err.Error(), "not in recipe manifest") {
 		t.Fatalf("inspect error = %v", err)
 	}
@@ -667,15 +712,15 @@ printf 'codex-cli 9.9.9\n'
 func TestPrintReviewEscapesTerminalControlsAndShowsEvidence(t *testing.T) {
 	var stdout bytes.Buffer
 	report := auditReport{
-		Summary:     "summary\x1b[31m",
-		Risk:        "low",
-		Findings:    []auditFinding{{File: "PKGBUILD", Line: 1, Range: "1-1", Evidence: "evil\u202ereorder", Explanation: "explain"}},
-		Uncertainty: "unknown",
-		Inspect:     []string{"PKGBUILD"},
+		Summary:             "summary\x1b[31m",
+		Risk:                "low",
+		Findings:            []auditFinding{{File: "PKGBUILD", LineStart: 1, LineEnd: 1, Evidence: "evil\u202ereorder", Explanation: "explain"}},
+		Uncertainties:       []string{"unknown"},
+		SuggestedInspection: []string{"PKGBUILD"},
 	}
 	printReview(runConfig{stdout: &stdout}, "hello", auditBundle{Identity: recipeIdentity{Commit: strings.Repeat("a", 40), ManifestDigest: strings.Repeat("b", 64)}}, report)
 	got := stdout.String()
-	for _, want := range []string{"evidence: evil\\u202ereorder", "explanation: explain", "Uncertainty:", "Inspect:", "\\u001b[31m"} {
+	for _, want := range []string{"evidence: evil\\u202ereorder", "explanation: explain", "Uncertainties:", "Suggested inspection:", "\\u001b[31m"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in report:\n%s", want, got)
 		}
@@ -759,27 +804,29 @@ exit 0
 
 func fakeCodex(t *testing.T, dir, bundleCopy, output string) string {
 	t.Helper()
-	path := writeExecutable(t, dir, "codex", `#!/bin/sh
-if test "$1" = "--version"; then
-  printf 'codex-cli 0.150.1\n'
-  exit 0
-fi
-cp bundle.json "$BUNDLE_COPY"
-out=''
-while test "$#" -gt 0; do
-  if test "$1" = "--output-last-message"; then
-    shift
-    out="$1"
-  fi
-  shift || true
-done
-test -n "$out"
-printf '{"type":"assistant_message_delta","delta":"ignored jsonl event"}\n'
-printf '%s' "$CODEX_OUTPUT" > "$out"
-`)
-	t.Setenv("BUNDLE_COPY", bundleCopy)
-	t.Setenv("CODEX_OUTPUT", output)
-	return path
+	script := fmt.Sprintf(`#!/usr/bin/python3
+import base64, hashlib, json, pathlib, sys
+if sys.argv[1:] == ["--version"]:
+    print("codex-cli 0.150.1")
+    raise SystemExit(0)
+prompt = sys.stdin.read()
+header, encoded = prompt.split("UNTRUSTED_AUR_BUNDLE encoding=base64 ", 1)[1].split("\n", 1)
+encoded = encoded.split("\nEND_UNTRUSTED_AUR_BUNDLE\n", 1)[0]
+meta = dict(part.split("=", 1) for part in header.split())
+decoded = base64.b64decode(encoded, validate=True)
+assert len(decoded) == int(meta["decoded_length"])
+assert len(encoded) == int(meta["encoded_length"])
+assert hashlib.sha256(decoded).hexdigest() == meta["sha256"]
+pathlib.Path(%s).write_text(json.dumps(json.loads(decoded)))
+a = sys.argv[1:]
+out = pathlib.Path(a[a.index("--output-last-message") + 1])
+out.write_text(%s)
+print(json.dumps({"type": "thread.started", "thread_id": "t"}))
+print(json.dumps({"type": "turn.started"}))
+print(json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "done"}}))
+print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1, "cached_input_tokens": 0, "cache_write_input_tokens": 0, "output_tokens": 1, "reasoning_output_tokens": 0}}))
+`, strconvQuote(bundleCopy), strconvQuote(output))
+	return writeExecutable(t, dir, "codex", script)
 }
 
 func assertBaseline(t *testing.T, dbPath, pkgbase string) {
