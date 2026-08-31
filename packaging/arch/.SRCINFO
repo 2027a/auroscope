@@ -12,9 +12,11 @@ pkgbase = auroscope
 	depends = openai-codex-bin>=0.150.1
 	depends = openai-codex-bin<0.152.0
 	options = !debug
-	source = auroscope-0.1.0.tar.gz::https://git.2027a.net/2027a/auroscope/archive/0c89a6dc07320242508980c55b46f2811dfd9cc6.tar.gz
+	source = auroscope-0.1.0.tar.gz::https://git.2027a.net/2027a/auroscope/archive/c5b5e1bd2b0b893b2b2147a311eb0d29bbc2ce00.tar.gz
+	source = codex-0.151.0.patch
 	source = LICENSE
-	sha256sums = 9e6ce8aa53a58fb3cb29a4ae6f74fc6592eb981d71a78fbc6cb64c758d882b05
+	sha256sums = 1ad46839b89fe58f281497ff406b1bd442d8c6af224d44d65fe01ca6fab8c715
+	sha256sums = 1a90ff5b30a18aa6a4c26557848aa9c304817b816fffd44cf1e33db26f1df4d6
 	sha256sums = ebb82b09b9572e21b42453e52aca9cf4d3cc5a439067fe24b69365af692e4959
 
 pkgname = auroscope

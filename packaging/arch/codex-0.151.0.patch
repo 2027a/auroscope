@@ -1,0 +1,89 @@
+diff --git a/docs/dependency-notes/codex-cli-contract.md b/docs/dependency-notes/codex-cli-contract.md
+index de83732f53c4a52c9e4bea8924801ce44456a210..7bbadef2921849aae8435e6fd653ae23a81583af 100644
+--- a/docs/dependency-notes/codex-cli-contract.md
++++ b/docs/dependency-notes/codex-cli-contract.md
+@@ -4,10 +4,11 @@
+ 
+ AURoscope v1 uses Codex CLI as its mandatory audit backend and runs it outside the hostile recipe worktree.
+ 
+-## Verified baseline
++## Verified baselines
+ 
+-- Codex CLI: `codex-cli 0.150.1`.
+-- Verified on 2026-08-31 with the installed executable.
++- Codex CLI: `codex-cli 0.150.1` and `codex-cli 0.151.0`.
++- `0.150.1` was verified on 2026-08-31 with the installed executable and a live isolated audit.
++- `0.151.0` was verified on 2026-08-31 from the checksum-matched upstream `x86_64-unknown-linux-musl` release artifact inside disposable Arch; its `exec --help` retains every invocation flag used by AURoscope.
+ 
+ ## Verified contract
+ 
+@@ -20,7 +21,7 @@ codex exec --json --ephemeral --sandbox read-only --skip-git-repo-check --output
+ - `--json` writes JSONL lifecycle events to stdout; stdout is not the audit response.
+ - `--output-last-message` writes the final assistant message as raw text. AURoscope reads and strictly validates that file as its bounded audit JSON.
+ - A private non-Git working directory is intentionally used to contain only `bundle.json`; `--skip-git-repo-check` is therefore required. Without it, Codex exits nonzero with `Not inside a trusted directory`.
+-- `--sandbox read-only` permits reading the bounded bundle while preventing model-driven workspace writes. `workspace-read` is not a valid sandbox value in 0.150.1.
++- `--sandbox read-only` permits reading the bounded bundle while preventing model-driven workspace writes. `workspace-read` is not a valid sandbox value in either supported version.
+ - `--ephemeral` avoids retaining a Codex session for the package audit.
+ 
+ The live contract smoke returned JSONL events on stdout and wrote this schema-valid final message to the requested file:
+@@ -35,6 +36,7 @@ AURoscope checks the exact version string before each audit, ignores JSONL stdou
+ 
+ ## Verification
+ 
+-- `codex --version` → `codex-cli 0.150.1`.
+-- Live isolated invocation with the flags above → exit `0`; JSONL stdout and raw final-message file observed separately.
+-- Fake-Codex tests reproduce the same argv/output-file contract deterministically.
++- `codex --version` → `codex-cli 0.150.1` for the live isolated audit.
++- Checksum-matched Codex `0.151.0` release in disposable Arch → exact version plus all required `exec` flags present.
++- Live isolated `0.150.1` invocation with the flags above → exit `0`; JSONL stdout and raw final-message file observed separately.
++- Fake-Codex tests reproduce the same argv/output-file contract deterministically for both accepted exact versions.
+diff --git a/internal/app/codex.go b/internal/app/codex.go
+index fdf7fef10a1f47d617de994294e6e5a47789314d..c8829e26b0908d44051e150b7985799258b62595 100644
+--- a/internal/app/codex.go
++++ b/internal/app/codex.go
+@@ -13,6 +13,11 @@ import (
+ 
+ const maxCodexJSONBytes = 256 * 1024
+ 
++var supportedCodexVersions = map[string]struct{}{
++	"codex-cli 0.150.1": {},
++	"codex-cli 0.151.0": {},
++}
++
+ type auditReport struct {
+ 	Summary     string         `json:"summary"`
+ 	Risk        string         `json:"risk"`
+@@ -82,8 +87,8 @@ func (c codexClient) verifyVersion() error {
+ 		return fmt.Errorf("Codex CLI version check failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+ 	}
+ 	version := strings.TrimSpace(stdout.String())
+-	if version != "codex-cli 0.150.1" {
+-		return fmt.Errorf("unsupported Codex CLI version %q, want codex-cli 0.150.1", version)
++	if _, ok := supportedCodexVersions[version]; !ok {
++		return fmt.Errorf("unsupported Codex CLI version %q; supported versions are 0.150.1 and 0.151.0", version)
+ 	}
+ 	return nil
+ }
+diff --git a/internal/app/integration_test.go b/internal/app/integration_test.go
+index 7b4b91bf83477a8ce07bd46a623d46ce8d21e480..f8bb063932c23d4524d1a5d9cca69008545884f4 100644
+--- a/internal/app/integration_test.go
++++ b/internal/app/integration_test.go
+@@ -649,6 +649,18 @@ printf '{"summary":"from final file","risk":"low","findings":[],"uncertainty":""
+ 	}
+ }
+ 
++func TestCodexAcceptsSupportedVersions(t *testing.T) {
++	for _, version := range []string{"codex-cli 0.150.1", "codex-cli 0.151.0"} {
++		t.Run(version, func(t *testing.T) {
++			dir := t.TempDir()
++			codexPath := writeExecutable(t, dir, "codex", "#!/bin/sh\nprintf '"+version+"\\n'\n")
++			if err := (codexClient{path: codexPath}).verifyVersion(); err != nil {
++				t.Fatal(err)
++			}
++		})
++	}
++}
++
+ func TestCodexRejectsUnsupportedVersionAndInvalidManifestReferences(t *testing.T) {
+ 	dir := t.TempDir()
+ 	codexPath := writeExecutable(t, dir, "codex", `#!/bin/sh
