@@ -15,7 +15,7 @@ auroscope <other Paru args>  # transparent passthrough when no AUR build occurs
 
 1. Official repository updates and installs remain native Paru/Pacman operations. They receive no AURoscope audit.
 2. Paru identifies the AUR package bases that would be built.
-3. AURoscope compares each exact recipe with the last successfully approved commit, or sends the full recipe on first use.
+3. AURoscope compares each exact recipe with the last approved and successfully built commit, or sends the full recipe on first use.
 4. Codex CLI returns a structured audit of the diff and relevant files.
 5. The user chooses `approve`, `inspect`, `edit` and re-audit, `skip`, or `cancel` per AUR package base.
 6. AURoscope relaunches Paru with the official targets and approved AUR targets. Paru resolves dependencies, calls `makepkg`, and installs through Pacman normally.

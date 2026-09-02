@@ -1,4 +1,6 @@
-# AURoscope technical design proposals
+> **SUPERSEDED BY ADR-0015 — HISTORICAL EVIDENCE ONLY. DO NOT USE AS ACTIVE ARCHITECTURE.**
+
+# AURoscope grounded technical design proposals
 
 ## Status and decision protocol
 

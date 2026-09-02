@@ -56,4 +56,4 @@ The execution invocation must use `--skipreview`, because Paru's post-hook revie
 ## Unresolved risks
 
 - A separate same-UID process can mutate the worktree after the guard returns.
-- The exact no-follow manifest and atomic approval-claim protocol are separate design concerns and are not expanded by this timing decision.
+- ADR-0015 settles the handoff with a private transaction file containing approved recipe identities and an exact manifest check. No durable or atomic approval-claim lifecycle is required; the remaining manifest details are grounded by the required Paru spike.

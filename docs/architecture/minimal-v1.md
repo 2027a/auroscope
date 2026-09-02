@@ -40,7 +40,7 @@ Codex CLI is the single v1 backend. It runs outside the recipe worktree and retu
 
 ## Decision and edit
 
-The menu is `approve | inspect | edit+reaudit | skip | cancel`. Edit support is accepted only if the Paru spike proves the edited audited worktree is exactly the worktree Paru builds. Otherwise `edit` is deferred rather than spawning a second build system.
+The menu is `approve | inspect | edit+reaudit | skip | cancel`. The Paru spike must prove that the edited and re-audited worktree is exactly the worktree Paru builds. If it cannot, planning is blocked and the architecture returns to Mathieu for a new decision; `edit` is not silently deferred.
 
 ## Final guard
 

@@ -24,7 +24,7 @@ Calling the external SQLite CLI was also considered, but it would make transacti
 - Use `github.com/mattn/go-sqlite3 v1.14.50` for the Arch `linux/amd64` v1.
 - Accept CGO and the C build toolchain as build-time requirements. Do not promise a pure-Go, static, or distribution-independent binary.
 - Pin the driver version and SQLite compile options. Any option change that affects SQLite behavior must be explicit and covered by tests.
-- Before release, test foreign-key enforcement, WAL, busy timeout, migrations, integrity/corruption handling, backup/restore, and concurrent access.
+- Before release, run a real database smoke test with CGO enabled and verify the minimal baseline/audit schema, required constraints, and reopen behavior. Backup, corruption-recovery, broad concurrency, and retention machinery are not v1 requirements unless the minimal implementation demonstrates a concrete need.
 - Reconsider a pure-Go driver only when supported cross-target releases become a concrete requirement; do not pay its measured binary and dependency cost pre-emptively.
 - Do not use the SQLite CLI as the application persistence interface.
 
@@ -47,4 +47,4 @@ Negative:
 
 The spike and options are summarized in [`docs/architecture/design-proposals.md`](../architecture/design-proposals.md) and [`docs/dependency-notes/sqlite-go-driver.md`](../dependency-notes/sqlite-go-driver.md).
 
-The accepted driver does not by itself settle schema, migration, transaction, locking, recovery, or retention design. Those remain separate design decisions. SQLite compile options and the final Arch packaging build must be verified in the implementation lane; this ADR does not authorize production code or an implementation plan.
+The accepted driver does not expand the database beyond ADR-0015's minimal baseline and audit history. Exact schema details belong to the grounded implementation plan; backup, broad recovery, concurrency, and retention are not unresolved design programs. SQLite compile options and the final Arch packaging build must still be verified in the implementation lane; this ADR does not authorize production code or an implementation plan.

@@ -4,7 +4,9 @@
 
 The minimal LLM-first architecture was accepted by Mathieu in [decision issue #19](https://git.2027a.net/2027a/auroscope/issues/19) with an exact standalone [`GO DECISION`](https://git.2027a.net/2027a/auroscope/issues/19#issuecomment-1314) on 2026-08-30.
 
-Production implementation remains unauthorized. The next permitted work is:
+Production implementation remains unauthorized. The next separate `MODE: EXECUTION` issue is scoped only to the disposable-Arch spike and grounded short implementation plan. Production implementation requires a later, separate authorization after Mathieu accepts that plan.
+
+The next permitted work is:
 
 1. a narrow disposable-Arch spike proving the Paru worktree/audit/edit/final-build path;
 2. a new short implementation plan grounded in that evidence;
@@ -28,7 +30,7 @@ The new plan must not guess the central Paru integration. In disposable Arch, pr
 
 1. native search/selection and AUR origin identification;
 2. the exact AUR worktree is available before package-supplied code;
-3. an edited recipe can be re-audited and the same worktree reaches final build, or `edit` is explicitly deferred;
+3. prove that an edited recipe can be re-audited and that exact edited worktree reaches the final Paru build; if not, block planning and return for a new decision;
 4. `PreBuildCommand` sees the exact worktree before build;
 5. skipped AUR targets can be excluded and Paru performs the final fresh resolution;
 6. official repository operations remain transparent and audit-free.

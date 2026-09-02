@@ -19,9 +19,9 @@ Mathieu also clarified the product boundary: AURoscope audits AUR recipes only. 
 For a normal system-upgrade flow, use two ordered phases:
 
 1. Run the complete official repository upgrade with native Paru/Pacman behavior (`paru -Syu --repo` or a contract-tested equivalent). AURoscope adds no audit or approval step to this phase, excludes no official package, and preserves Paru/Pacman's terminal interaction and status.
-2. After the official phase succeeds, query and plan AUR updates against the resulting system state.
-3. Inspect the exact AUR recipes and dependency closure, present the evidence, and obtain the required human decisions.
-4. Build and install only the approved AUR work. Deferred or rejected recipes, plus dependants that cannot safely proceed without them, remain held with an explanation.
+2. After the official phase succeeds, ask Paru for the AUR package bases in its resolved build set.
+3. Audit each AUR package base and collect the user's per-package decision.
+4. Relaunch Paru with approved AUR targets and explicit skipped targets. Paru performs the fresh authoritative resolution, builds and installs what remains, or rejects the transaction if the remaining targets cannot be resolved.
 
 There is no provisional AUR review before the official upgrade. “Inspect before mutation” applies to the AUR phase before any AUR recipe is built, not globally before the native official transaction.
 
@@ -57,12 +57,11 @@ Negative:
 
 - the upgrade is visibly phased rather than one combined transaction;
 - a failed or deferred AUR phase can leave an installed AUR package temporarily incompatible with updated official libraries;
-- the wrapper must clearly report the official phase result and the separately held AUR consequences.
+- Paru may reject the final AUR transaction when skipped targets make the remaining request unsatisfiable; AURoscope reports Paru's result without computing its own dependency closure.
 
 ## Unresolved risks
 
-- Paru has no stable machine-readable combined sysupgrade plan; the separate phases avoid depending on one but still require versioned AUR query and planning adapters.
-- Dependency or provider drift can still occur between AUR planning and execution and remains subject to ADR-0003's fail-closed re-resolution contract.
+- The one supported Paru query/worktree/exclusion surface must be proven by the disposable-Arch spike required by ADR-0015.
 - AUR compatibility with newly upgraded official libraries cannot be guaranteed by recipe review alone.
 
 ## Evidence

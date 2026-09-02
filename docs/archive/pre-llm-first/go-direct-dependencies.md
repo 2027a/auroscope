@@ -1,3 +1,5 @@
+> **SUPERSEDED BY ADR-0015 — HISTORICAL EVIDENCE ONLY. DO NOT USE AS AN ACTIVE DEPENDENCY DECISION.**
+
 # Dependency note — Direct Go dependencies for configuration and editor argv
 
 ## Context

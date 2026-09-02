@@ -1,3 +1,5 @@
+> **SUPERSEDED BY ADR-0015 — DO NOT EXECUTE THIS PROMPT. HISTORICAL EVIDENCE ONLY.**
+
 # Phase de design AURoscope
 
 Travaille dans `/home/mathieu/.hermes/profiles/hephaistos/projects/auroscope` sur le dépôt `2027a/auroscope`.

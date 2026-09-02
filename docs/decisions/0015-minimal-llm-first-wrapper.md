@@ -27,9 +27,9 @@ Build v1 as a minimal LLM-first wrapper:
 
 ## Required proof before planning
 
-A disposable-Arch spike must prove the supported Paru surface for exact worktree acquisition, optional edit and reuse of that same worktree, pre-build guard timing, skip/exclusion followed by fresh Paru resolution, and audit-free official package behavior.
+A disposable-Arch spike must prove the supported Paru surface for exact worktree acquisition, edit and re-audit of that same worktree, pre-build guard timing, skip/exclusion followed by fresh Paru resolution, and audit-free official package behavior.
 
-If edit cannot be supported without taking over Paru's build role, edit is deferred from v1.
+If Paru cannot build the exact edited-and-re-audited worktree without AURoscope taking over its build role, planning is blocked and the architecture returns to Mathieu for a new decision. `edit` is not silently deferred from v1.
 
 ## Consequences
 
