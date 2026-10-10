@@ -728,7 +728,7 @@ if test "$1" = "--version"; then
 fi
 printf '%s\n' "$*" > "$ARGS_FILE"
 pwd > "$PWD_FILE"
-cp bundle.json "$BUNDLE_COPY"
+cat > "$BUNDLE_COPY"
 out=''
 while test "$#" -gt 0; do
   if test "$1" = "--output-last-message"; then
@@ -904,10 +904,7 @@ if test "$1" = "--version"; then
   printf 'codex-cli 0.150.1\n'
   exit 0
 fi
-if IFS= read -r unexpected; then
-  printf 'unexpected stdin: %s\n' "$unexpected" >&2
-  exit 90
-fi
+cat > "$CODEX_INPUT"
 out=''
 while test "$#" -gt 0; do
   if test "$1" = "--output-last-message"; then shift; out="$1"; fi
@@ -915,9 +912,16 @@ while test "$#" -gt 0; do
 done
 printf '%s' '{"summary":"stdin isolated","risk":"low","findings":[],"uncertainty":"","inspect":[]}' > "$out"
 `)
+	inputPath := filepath.Join(dir, "codex-input.json")
+	t.Setenv("CODEX_INPUT", inputPath)
 	report, err := (codexClient{path: codexPath}).audit(auditBundle{}, runConfig{stdin: strings.NewReader("approve\n")})
 	if err != nil {
 		t.Fatal(err)
+	}
+	var received auditBundle
+	readJSON(t, inputPath, &received)
+	if strings.Contains(readString(t, inputPath), "approve") {
+		t.Fatal("Codex consumed interactive input")
 	}
 	if report.Summary != "stdin isolated" {
 		t.Fatalf("report = %#v", report)
@@ -1024,7 +1028,7 @@ fi
 if test -n "${CODEX_CALLS:-}"; then
   printf 'audit\n' >> "$CODEX_CALLS"
 fi
-cp bundle.json "$BUNDLE_COPY"
+cat > "$BUNDLE_COPY"
 out=''
 while test "$#" -gt 0; do
   if test "$1" = "--output-last-message"; then

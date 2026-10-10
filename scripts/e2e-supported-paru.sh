@@ -117,7 +117,7 @@ AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
   go test ./internal/app -run '^TestSelectionRealParuColors$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
-  go test ./internal/app -run '^(TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
+  go test ./internal/app -run '^(TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestOptionOperands(Handoff|RejectInvalidBeforeParu|NativePassThrough|SeparatorReachesOrder)$' -count=1 -v -timeout=120s
@@ -158,7 +158,8 @@ done
 [ -n "$out" ]
 [ "$model" = gpt-5.6-luna ]
 [ "$PWD" != /home/builder/aur/hello ]
-[ -f bundle.json ]
+[ ! -e bundle.json ]
+python -c 'import json,sys; b=json.load(sys.stdin); assert b["identity"]["pkgbase"] == "hello"; assert any(f["path"] == "PKGBUILD" and f["text"] for f in b["files"])'
 printf 'audit\n' >>/tmp/codex-calls
 if [ "${AUROSCOPE_E2E_DRIFT:-}" = 1 ] ||
    { [ "${AUROSCOPE_E2E_DRIFT:-}" = once ] && [ ! -f /tmp/auroscope-drift-once ]; }; then
