@@ -105,6 +105,12 @@ invalid JSON, or an invalid configuration fails the audit with retry/skip/cancel
 never approval. The file is reread on explicit retry. Save a copy of a custom
 prompt before deleting the file to regenerate the default on the next AUR audit.
 
+For Codex, the complete bundle is delivered directly through private stdin,
+not a local file the model must choose to open. AURoscope appends a transport
+instruction to the configured prompt without rewriting the saved value. This
+reader is separate from your interactive approval input; recipe data is not
+passed as a command-line argument or executed.
+
 Prompt customization does not disable read-only CLI protections, strict local
 report validation, human approval, or the final recipe-identity guard. Package
 upgrades do not own or replace user configuration.

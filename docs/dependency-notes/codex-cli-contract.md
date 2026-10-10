@@ -22,11 +22,17 @@ codex exec --json --ephemeral --sandbox read-only --skip-git-repo-check --output
 
 - `--json` writes JSONL lifecycle events to stdout; stdout is not the audit response.
 - `--output-last-message` writes the final assistant message as raw text. AURoscope reads and strictly validates that file as its bounded audit JSON.
-- A private non-Git working directory is intentionally used to contain only `bundle.json`; `--skip-git-repo-check` is therefore required. Without it, Codex exits nonzero with `Not inside a trusted directory`.
+- Codex runs in a private non-Git directory outside the recipe worktree.
+  It contains the output schema, not a recipe file; the bounded bundle arrives
+  through private stdin. `--skip-git-repo-check` remains required.
 - `--sandbox read-only` permits reading the bounded bundle while preventing model-driven workspace writes. `workspace-read` is not a valid sandbox value in either supported version.
 - `--ephemeral` avoids retaining a Codex session for the package audit.
 - `--output-schema` constrains the final response before local validation. Codex/OpenAI structured output requires every object property to appear in `required`; optional finding fields therefore use nullable types and local decoding maps `null` to their zero values.
-- `codex exec --help` documents that non-TTY stdin is read and appended even when the prompt is already positional. With an explicit empty stdin, 0.150.1 prints `Reading additional input from stdin...` and immediately sees EOF. That line is not evidence that Codex is waiting for user input. AURoscope must nevertheless provide an isolated empty stdin rather than its interactive Paru/review stream.
+- `codex exec --help` documents that piped stdin is appended to a positional
+  prompt. AURoscope supplies a finite private reader of the complete JSON
+  bundle, never the interactive Paru/review stream. The version check still
+  receives empty stdin. Earlier qualification used empty audit stdin and a
+  local file; issue #95 replaces that delivery mechanism.
 
 The live contract smoke returned JSONL events on stdout and wrote this schema-valid final message to the requested file:
 
@@ -35,6 +41,45 @@ The live contract smoke returned JSONL events on stdout and wrote this schema-va
 ```
 
 ## Project usage
+
+### Direct bundle delivery, issue #95
+
+A valid report saying the recipe was inaccessible is not evidence of an audit.
+The old client wrote `bundle.json` but left audit stdin empty, relying on the
+model to open the file. An inert live probe with Codex 0.156.1 reproduced an
+`unknown` report with exit zero when recipe-reading tools were disabled.
+The same probe received a random recipe version through stdin without those
+tools. This reproduces the failure condition, not Mathieu's exact desktop
+configuration.
+
+The client now sends the complete JSON bundle through private stdin. No local
+`bundle.json` is written. A fixed transport instruction is appended to both
+default and custom prompts; stored user configuration remains unchanged.
+Recipe text is not placed in argv, executed, or treated as instructions.
+Read-only sandboxing, output validation, review and final guard remain intact.
+This ensures delivery, not model accuracy or immunity to prompt injection.
+
+`TestCodexBundleDirectInput` is red against the old client and green against
+the candidate, including existing custom prompts and preserved user approval.
+The auxiliary-file regression receives full, diff and unchanged bundles from
+stdin. The installed-Paru gate runs these tests against `/usr/bin/auroscope`.
+
+The opt-in production-client test passed with real Codex 0.156.1 and
+`gpt-5.6-luna`, effort `medium`, with recipe-reading tools disabled.
+It requires the exact random version from an inert recipe in the summary; a
+nonempty summary alone does not qualify this check.
+
+```sh
+AUROSCOPE_TEST_REAL_CODEX_INPUT=/absolute/path/to/codex \
+  go test ./internal/app -run '^TestCodexRealDirectInputContract$' -count=1 -v
+```
+
+The npm launcher on this host needs Node on PATH. The installed platform
+package also contains the real native `bin/codex` and its sibling helpers;
+the successful probe invoked that binary directly without copying credentials.
+The version-matched help and feature schema were consulted:
+
+<https://raw.githubusercontent.com/openai/codex/rust-v0.156.1/codex-rs/core/config.schema.json>
 
 ### Explicit initial configuration and thinking
 
@@ -85,7 +130,13 @@ The local Codex launcher cannot start because `node` is absent; this is not
 real-model qualification or proof that an account accepts `gpt-5.6-luna`.
 The candidate still needs its immutable package pin and installed-artifact gates.
 
-AURoscope checks the strict stable banner and numeric minimum before each audit, bounds JSONL/stderr diagnostics and the final-message file, rejects unknown fields and trailing data, and validates every file/line reference against the recipe bundle. It runs Codex in a separate process group with empty stdin, a five-minute timeout, visible 15-second progress, signal forwarding, descendant cleanup, and a fresh private directory for every retry. Any command, version, transport, or validation failure enters the explicit retry/skip/cancel path; it never bypasses the audit silently.
+AURoscope checks the strict stable banner and numeric minimum before each
+audit, bounds JSONL/stderr diagnostics and the final-message file, rejects
+unknown fields and trailing data, and validates file/line references against
+the bundle. Codex runs in a separate process group with private bundle stdin,
+a five-minute timeout, visible progress, signal forwarding, descendant cleanup,
+and a fresh private directory for every retry. Command, version, transport or
+validation failure enters retry/skip/cancel; there is no audit bypass.
 
 ## Verification
 

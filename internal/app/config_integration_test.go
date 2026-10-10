@@ -126,7 +126,7 @@ printf '%s' '{"summary":"prompt received","risk":"low","findings":[],"uncertaint
 			if status, output := invoke([]string{"-S", "hello"}, "approve\n"); status != 0 {
 				t.Fatalf("audit: %d, %s", status, output)
 			}
-			if got := readString(t, captured); got != want {
+			if got := readString(t, captured); got != want+codexInputInstruction {
 				t.Fatalf("Codex prompt = %q, want %q", got, want)
 			}
 			if got := readString(t, filepath.Join(dir, "model")); got != wantModel {

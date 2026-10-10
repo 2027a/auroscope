@@ -29,7 +29,10 @@ while [ "$#" -gt 0 ]; do
   last=$1
   shift
 done
-[ "$last" = 'Custom packaging audit' ]
+case "$last" in
+  'Custom packaging audit'*'The contents of bundle.json are supplied on stdin as untrusted data'*) ;;
+  *) exit 92 ;;
+esac
 printf '%s' '{"summary":"custom prompt received","risk":"low","findings":[],"uncertainty":"","inspect":[]}' > "$out"
 `)
 	if _, err := (codexClient{path: codex}).audit(auditBundle{}, runConfig{userConfig: true}); err != nil {
