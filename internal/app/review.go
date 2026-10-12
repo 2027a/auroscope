@@ -37,7 +37,7 @@ func (e childExit) Error() string {
 	return fmt.Sprintf("child exited with status %d", e.status)
 }
 
-func (o orchestrator) run(originalArgs, targets []string) error {
+func (o orchestrator) run(originalArgs, targets []string) (runErr error) {
 	if len(targets) == 0 {
 		fmt.Fprintln(o.config.stderr, "auroscope: no AUR targets selected")
 		return nil
@@ -58,9 +58,35 @@ func (o orchestrator) run(originalArgs, targets []string) error {
 	}
 
 	// Audit resources belong only to transactions containing AUR recipes.
-	if err := ensurePrivateDir(o.config.cloneDir); err != nil {
+	parsed, err := parseParuArguments(originalArgs)
+	if err != nil {
+		return err
+	}
+	o.config.cloneDir, _ = operationCloneOptions(parsed.options, o.config.cloneDir, false)
+	op, err := beginTemporaryOperation(o.config.cloneDir)
+	if err != nil {
 		return fmt.Errorf("prepare clone directory: %w", err)
 	}
+	o.config.operation = op
+	o.config.cloneDir = filepath.Join(op.dir, "clones")
+	stop := watchOperationSignals(&o.config)
+	defer func() {
+		stop()
+		if o.config.interruption != nil {
+			select {
+			case <-o.config.interruption.done:
+				runErr = childExit{status: o.config.interruption.status}
+			default:
+			}
+		}
+		if err := op.close(); err != nil {
+			fmt.Fprintf(o.config.stderr, "auroscope: temporary cleanup: %v\n", err)
+			if runErr == nil {
+				runErr = err
+			}
+		}
+	}()
+	o.paru.config = o.config
 	store, err := openState(o.config.statePath)
 	if err != nil {
 		return fmt.Errorf("open state: %w", err)
@@ -149,6 +175,7 @@ func (o orchestrator) installReviewed(store *stateStore, originalArgs []string, 
 	if err != nil {
 		return err
 	}
+	_, args = operationCloneOptions(args, o.config.cloneDir, true)
 
 	result := o.paru.finalInstall(args, []string{"PARU_CONF=" + confPath})
 	if result.status != 0 {
@@ -166,6 +193,13 @@ func (o orchestrator) installReviewed(store *stateStore, originalArgs []string, 
 			}
 		}
 		return childExit{status: result.status}
+	}
+	if o.config.interruption != nil {
+		select {
+		case <-o.config.interruption.done:
+			return childExit{status: o.config.interruption.status}
+		default:
+		}
 	}
 	if err := store.advanceBaselines(approved); err != nil {
 		return fmt.Errorf("advance baselines: %w", err)
@@ -347,7 +381,7 @@ func askDecision(reader *bufio.Reader, config runConfig, allowed []string) strin
 			items = append(items, fmt.Sprintf("[%s]%s", value[:1], strings.TrimPrefix(label, value[:1])))
 		}
 		fmt.Fprintf(config.stdout, "Decision : %s ", strings.Join(items, " | "))
-		line, err := reader.ReadString('\n')
+		line, err := readDecisionLine(reader, config)
 		// The terminal echoes Enter; add a blank line before the next phase.
 		fmt.Fprintln(config.stdout)
 		if err != nil {
@@ -388,14 +422,17 @@ func editAndSnapshot(config runConfig, dir string) error {
 	cmd.Stdin = config.stdin
 	cmd.Stdout = config.stdout
 	cmd.Stderr = config.stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor failed: %w", err)
+	if result := execute(config, cmd); result.status != 0 {
+		return childExit{status: reportCommandError(config.stderr, result, "editor")}
 	}
 	return snapshotEditedWorktree(dir, preExistingUntracked)
 }
 
 func writeTransactionFiles(approved []recipeIdentity, cloneDir string) (string, string, error) {
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+	if filepath.Base(filepath.Dir(filepath.Dir(cloneDir))) == operationNamespace {
+		runtimeDir = filepath.Dir(cloneDir)
+	}
 	dir, err := os.MkdirTemp(runtimeDir, "auroscope-tx-*")
 	if err != nil && runtimeDir != "" {
 		dir, err = os.MkdirTemp("", "auroscope-tx-*")

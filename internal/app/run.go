@@ -35,6 +35,8 @@ type runConfig struct {
 	stderr        io.Writer
 	signals       <-chan os.Signal
 	codexTimeout  time.Duration
+	operation     *temporaryOperation
+	interruption  *operationInterruption
 }
 
 // Run executes AURoscope with the process terminal and forwards termination
@@ -335,6 +337,16 @@ type commandResult struct {
 }
 
 func execute(config runConfig, cmd *exec.Cmd) commandResult {
+	if config.interruption != nil {
+		select {
+		case <-config.interruption.done:
+			return commandResult{status: config.interruption.status}
+		default:
+		}
+	}
+	if config.operation != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, config.operation.lock)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var terminalFD uintptr
 	parentPgrp := -1
@@ -349,6 +361,13 @@ func execute(config runConfig, cmd *exec.Cmd) commandResult {
 	if err := cmd.Start(); err != nil {
 		return commandResult{status: -1, err: err}
 	}
+	var recordErr error
+	if config.operation != nil {
+		if err := config.operation.recordProcessGroup(cmd.Process.Pid); err != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			recordErr = err
+		}
+	}
 
 	done := make(chan struct{})
 	if config.signals != nil {
@@ -362,6 +381,16 @@ func execute(config runConfig, cmd *exec.Cmd) commandResult {
 					if sig != nil {
 						if signalNumber, ok := sig.(syscall.Signal); ok {
 							_ = syscall.Kill(-cmd.Process.Pid, signalNumber)
+							if config.operation != nil {
+								timer := time.NewTimer(codexStopGrace)
+								select {
+								case <-done:
+									timer.Stop()
+									return
+								case <-timer.C:
+									_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+								}
+							}
 						}
 					}
 				case <-done:
@@ -372,6 +401,10 @@ func execute(config runConfig, cmd *exec.Cmd) commandResult {
 	}
 
 	err := cmd.Wait()
+	if config.operation != nil {
+		// Paru/editor descendants must not continue using a completed worktree.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	if parentPgrp >= 0 {
 		signal.Ignore(syscall.SIGTTOU)
 		restoreErr := setForegroundProcessGroup(terminalFD, parentPgrp)
@@ -382,6 +415,9 @@ func execute(config runConfig, cmd *exec.Cmd) commandResult {
 		}
 	}
 	close(done)
+	if recordErr != nil {
+		return commandResult{status: -1, err: recordErr}
+	}
 	return commandResult{status: commandStatus(err), err: err}
 }
 

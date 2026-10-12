@@ -589,6 +589,8 @@ printf '{"summary":"review","risk":"low","findings":[],"uncertainty":"","inspect
 printf 'pkgrel=2\n' >> "$1/PKGBUILD"
 `)
 	t.Setenv("CODEX_CALLS", codexCalls)
+	clone := filepath.Join(dir, "built-recipe")
+	t.Setenv("COPY_BUILT_RECIPE", clone)
 
 	var stderr bytes.Buffer
 	status := run([]string{"-S", "hello"}, runConfig{
@@ -608,7 +610,6 @@ printf 'pkgrel=2\n' >> "$1/PKGBUILD"
 	if got := readLines(t, codexCalls); !reflect.DeepEqual(got, []string{"call", "call"}) {
 		t.Fatalf("codex calls = %#v", got)
 	}
-	clone := filepath.Join(dir, "clones", "hello")
 	if got := gitTrim(t, clone, "status", "--porcelain"); got != "?? preexisting-source.tar.gz" {
 		t.Fatalf("edited recipe changes were not committed cleanly around the pre-existing artifact: %q", got)
 	}
@@ -888,6 +889,9 @@ if test "$1" = "-G"; then
   rm -rf "$PWD/$2"
   cp -R "$RECIPE_REPO" "$PWD/$2"
   exit 0
+fi
+if test -n "${COPY_BUILT_RECIPE:-}" && test "$1" = -S; then
+  cp -R "$AUROSCOPE_CLONE_DIR/hello" "$COPY_BUILT_RECIPE"
 fi
 exit 0
 `)

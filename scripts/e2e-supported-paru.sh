@@ -19,6 +19,7 @@ if [ "${AUROSCOPE_E2E_SOURCE_ONLY:-0}" != 1 ]; then
 fi
 
 docker run --rm -i \
+  --tmpfs /work/auroscope-tmpfs:rw,exec,mode=1777 \
   -e AUROSCOPE_E2E_INSIDE=1 \
   -e AUROSCOPE_E2E_SELECTION_ONLY="${AUROSCOPE_E2E_SELECTION_ONLY:-0}" \
   -e AUROSCOPE_E2E_SOURCE_ONLY="${AUROSCOPE_E2E_SOURCE_ONLY:-0}" \
@@ -68,6 +69,13 @@ AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^(TestEmptyAURUpdate|TestEmptyUpdateRealParu|TestUpgradePreviewPassesThrough|TestAuditStateBoundary)$' -count=1 -v -timeout=120s
 
+if [[ "${AUROSCOPE_E2E_SOURCE_ONLY:-0}" == 1 ]]; then
+AUROSCOPE_TEST_BINARY=/usr/local/bin/auroscope \
+  AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
+  GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
+  go test ./internal/app -run '^TestTemporary' -count=1 -v -timeout=120s
+fi
+
 # Install the pinned recipe, not the independently built source binary. Package
 # the real compiled Paru as a disposable provider so Pacman checks dependencies.
 # Source-only checks exercise unpublished worktree fixes without fetching the
@@ -116,8 +124,9 @@ AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestSelectionRealParuColors$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
+  AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
-  go test ./internal/app -run '^(TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
+  go test ./internal/app -run '^(TestTemporaryArchivesLifecycle|TestTemporaryOperation.*|TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestOptionOperands(Handoff|RejectInvalidBeforeParu|NativePassThrough|SeparatorReachesOrder)$' -count=1 -v -timeout=120s
@@ -132,7 +141,19 @@ fi
 cat >/usr/local/bin/paru <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>/tmp/paru-calls
-exec /usr/local/bin/paru-real "$@"
+if [ "${1:-}" = -G ]; then
+  printf '%s' "$PWD" >/tmp/active-clone-root
+fi
+if /usr/local/bin/paru-real "$@"; then status=0; else status=$?; fi
+# Inspect the actual successfully built edited recipe before AURoscope cleans it.
+if [ "$status" = 0 ] && [ "${1:-}" = -S ] && [ -f /tmp/active-clone-root ]; then
+  clone="$(cat /tmp/active-clone-root)/hello"
+  if [ -d "$clone" ]; then
+    git -C "$clone" log -1 --format=%s >/tmp/built-recipe-commit
+    cp "$clone/PKGBUILD" /tmp/built-recipe-PKGBUILD
+  fi
+fi
+exit "$status"
 EOF
 chmod 0755 /usr/local/bin/paru
 
@@ -157,15 +178,16 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$out" ]
 [ "$model" = gpt-5.6-luna ]
-[ "$PWD" != /home/builder/aur/hello ]
+[ "$PWD" != "$(cat /tmp/active-clone-root)/hello" ]
 [ ! -e bundle.json ]
 python -c 'import json,sys; b=json.load(sys.stdin); assert b["identity"]["pkgbase"] == "hello"; assert any(f["path"] == "PKGBUILD" and f["text"] for f in b["files"])'
 printf 'audit\n' >>/tmp/codex-calls
 if [ "${AUROSCOPE_E2E_DRIFT:-}" = 1 ] ||
    { [ "${AUROSCOPE_E2E_DRIFT:-}" = once ] && [ ! -f /tmp/auroscope-drift-once ]; }; then
-  printf '\n# post-audit drift\n' >>/home/builder/aur/hello/PKGBUILD
-  git -C /home/builder/aur/hello -c user.name=E2E -c user.email=e2e@example.invalid add PKGBUILD
-  git -C /home/builder/aur/hello -c user.name=E2E -c user.email=e2e@example.invalid commit -m drift >/dev/null
+  clone="$(cat /tmp/active-clone-root)/hello"
+  printf '\n# post-audit drift\n' >>"$clone/PKGBUILD"
+  git -C "$clone" -c user.name=E2E -c user.email=e2e@example.invalid add PKGBUILD
+  git -C "$clone" -c user.name=E2E -c user.email=e2e@example.invalid commit -m drift >/dev/null
   touch /tmp/auroscope-drift-once
 fi
 printf '%s' '{"summary":"supported-Paru E2E audit","risk":"low","findings":[],"uncertainty":"","inspect":["PKGBUILD"]}' >"$out"
@@ -234,12 +256,14 @@ printf 'edit\napprove\n' | sudo -u builder -- env \
   /usr/local/bin/auroscope -S --noconfirm --rebuild hello
 after_edit_codex=$(wc -l </tmp/codex-calls)
 [ "$after_edit_codex" -eq $((before_edit_codex + 2)) ]
-sudo -u builder -- git -C /home/builder/aur/hello log -1 --format=%s | grep -q 'AURoscope reviewed edit'
-grep -q 'reviewed local edit' /home/builder/aur/hello/PKGBUILD
+grep -q 'AURoscope reviewed edit' /tmp/built-recipe-commit
+grep -q 'reviewed local edit' /tmp/built-recipe-PKGBUILD
+test ! -e "$(cat /tmp/active-clone-root)"
 
 # Losing the edited clone must trigger a full audit, not a fatal missing diff.
 # Keep SQLite and require another approval before the real guarded Paru build.
-sudo -u builder -- rm -rf /home/builder/aur/hello
+# The operation cleanup has already removed only that private clone.
+test ! -e "$(cat /tmp/active-clone-root)"
 before_cleanup_codex=$(wc -l </tmp/codex-calls)
 printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild hello \
   2>&1 | tee /tmp/clone-cleanup-output
@@ -247,6 +271,16 @@ grep -Fq 'Historical comparison unavailable' /tmp/clone-cleanup-output
 after_cleanup_codex=$(wc -l </tmp/codex-calls)
 [ "$after_cleanup_codex" -eq $((before_cleanup_codex + 1)) ]
 pacman -Q hello
+
+# Repeat real installations on tmpfs as well as the on-disk root above.
+install -d -m 0700 -o builder -g builder /work/auroscope-tmpfs/clones
+for iteration in 1 2 3; do
+  printf 'approve\n' | run_as_builder env AUROSCOPE_CLONE_DIR=/work/auroscope-tmpfs/clones \
+    /usr/local/bin/auroscope -S --noconfirm --rebuild hello
+  test ! -e "$(cat /tmp/active-clone-root)"
+done
+test "$(stat -f -c %T /work/auroscope-tmpfs/clones)" = tmpfs
+echo 'Repeated real AUR installs leave no temporary clone or archives on tmpfs'
 
 # A committed mutation after bundle construction must fail at the real hook.
 before_drift=$(grep -Fxc -- '-S --noconfirm --rebuild --skipreview -- hello' /tmp/paru-calls || true)

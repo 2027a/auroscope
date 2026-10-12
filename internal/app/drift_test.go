@@ -67,6 +67,7 @@ while IFS= read -r line; do
 done < "$PARU_CONF"
 [ -n "$hook" ]
 if PKGBASE=hello sh -c "$hook"; then
+  cp -R "$AUROSCOPE_CLONE_DIR/hello" "$BUILT_RECIPE"
   printf 'build\n' >> "$BUILDS"
   exit 0
 fi
@@ -87,6 +88,7 @@ exit 1
 				"RECIPE_REPO="+repo, "FAILURE="+tc.failure,
 				"DRIFTED="+filepath.Join(dir, "drifted"),
 				"TRANSACTIONS="+transactions, "BUILDS="+builds)
+			cmd.Env = append(cmd.Env, "BUILT_RECIPE="+filepath.Join(dir, "built-recipe"))
 			output, err := cmd.CombinedOutput()
 			if got := commandStatus(err); got != tc.status {
 				t.Fatalf("status = %d, want %d\n%s", got, tc.status, output)
@@ -138,7 +140,7 @@ exit 1
 			if tc.builds == 1 {
 				var bundle auditBundle
 				readJSON(t, filepath.Join(dir, "bundle.json"), &bundle)
-				actual, _, err := readRecipeIdentity("hello", filepath.Join(dir, "clones", "hello"))
+				actual, _, err := readRecipeIdentity("hello", filepath.Join(dir, "built-recipe"))
 				if err != nil {
 					t.Fatal(err)
 				}

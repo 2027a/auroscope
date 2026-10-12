@@ -109,7 +109,13 @@ func baselineCommitAvailable(dir, commit string) (bool, error) {
 	}
 	cmd := exec.Command("git", "cat-file", "--batch-check=%(objectname) %(objecttype)")
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))
 	cmd.Stdin = strings.NewReader(commit + "\n")
+	release, err := leaseRecipeCommand(cmd)
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -311,6 +317,12 @@ func untrackedRecipePaths(dir string) (map[string]bool, error) {
 func gitOutput(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))
+	release, err := leaseRecipeCommand(cmd)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

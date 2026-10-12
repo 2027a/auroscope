@@ -62,6 +62,9 @@ func (paru paruClient) runInDirWithStdinEnv(stdout io.Writer, dir string, args [
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = config.stderr
+	if config.operation != nil {
+		env = append(env, "AUROSCOPE_CLONE_DIR="+config.cloneDir)
+	}
 	if len(env) > 0 {
 		cmd.Env = append(os.Environ(), env...)
 	}
@@ -227,10 +230,19 @@ func (paru paruClient) pendingAURUpdates() ([]string, error) {
 // but approve no recipe: a newly discovered update must not bypass the audit.
 func (paru paruClient) finishEmptyAURUpdate() int {
 	config := paru.config.withDefaults()
-	if err := ensurePrivateDir(config.cloneDir); err != nil {
+	op, err := beginTemporaryOperation(config.cloneDir)
+	if err != nil {
 		fmt.Fprintf(config.stderr, "auroscope: prepare clone directory: %v\n", err)
 		return statusFailure
 	}
+	defer func() {
+		if err := op.close(); err != nil {
+			fmt.Fprintf(config.stderr, "auroscope: temporary cleanup: %v\n", err)
+		}
+	}()
+	config.operation = op
+	config.cloneDir = filepath.Join(op.dir, "clones")
+	paru.config = config
 	txDir, confPath, err := writeTransactionFiles(nil, config.cloneDir)
 	if err != nil {
 		fmt.Fprintf(config.stderr, "auroscope: prepare empty AUR transaction: %v\n", err)

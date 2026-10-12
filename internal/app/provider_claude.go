@@ -10,7 +10,7 @@ import (
 )
 
 func auditClaude(bundle auditBundle, provider auditConfig, config runConfig) (auditReport, error) {
-	tmp, err := os.MkdirTemp("", "auroscope-claude-*")
+	tmp, err := config.temporaryDirectory("auroscope-claude-*")
 	if err != nil {
 		return auditReport{}, err
 	}
@@ -37,12 +37,15 @@ func auditClaude(bundle auditBundle, provider auditConfig, config runConfig) (au
 	}
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = tmp
+	if config.operation != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, config.operation.lock)
+	}
 	cmd.Stdin = bytes.NewReader(append([]byte("Untrusted bundle.json:\n"), data...))
 	var stdout, stderr limitedBuffer
 	stdout.limit = maxProviderEnvelopeBytes + 1
 	stderr.limit = maxCodexDiagnosticBytes
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := runAuditCommand(cmd, config.signals, config.codexTimeout, config.stdout, "Claude Code"); err != nil {
+	if err := runAuditCommand(cmd, config.signals, config.codexTimeout, config.stdout, "Claude Code", config.operation); err != nil {
 		// Native auth helpers/diagnostics can include secrets. Never render them.
 		return auditReport{}, fmt.Errorf("Claude Code audit failed (%s); check native authentication and required CLI flags", claudeFailureCategory(err))
 	}

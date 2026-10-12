@@ -122,3 +122,46 @@ func (parsed paruArguments) classificationArgs() []string {
 	}
 	return args
 }
+
+// Paru treats builddir and clonedir as aliases. For audited transactions these
+// select the operation root, never a shared worktree. Only their own operands
+// are rewritten; another option's value is opaque even if it resembles a flag.
+func operationCloneOptions(options []string, root string, replace bool) (string, []string) {
+	options = append([]string(nil), options...)
+	for i := 0; i < len(options); i++ {
+		arg := options[i]
+		if arg == "--" {
+			break
+		}
+		if strings.HasPrefix(arg, "--") {
+			name, value, attached := strings.Cut(arg, "=")
+			if name == "--clonedir" || name == "--builddir" {
+				if !attached {
+					value = options[i+1]
+				}
+				if replace {
+					if attached {
+						options[i] = name + "=" + root
+					} else {
+						options[i+1] = root
+					}
+				} else {
+					root = value
+				}
+			}
+			if !attached && paruLongOptionArity(name) == 1 {
+				i++
+			}
+		} else {
+			for j := 1; j < len(arg); j++ {
+				if arg[j] == 'b' || arg[j] == 'r' {
+					if j == len(arg)-1 {
+						i++
+					}
+					break
+				}
+			}
+		}
+	}
+	return root, options
+}
