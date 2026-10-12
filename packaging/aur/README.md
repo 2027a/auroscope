@@ -75,6 +75,64 @@ the full pinned-Paru integration gate and the opt-in real Codex audit test.
 
 ## Upstream snapshot
 
+### Recovery after the r31 verification
+
+The later host check exposed a test assumption: `TMPDIR` was labelled as disk
+even when it was tmpfs. The test now exercises the default temporary root on
+either filesystem; explicit disk and tmpfs roots still check their actual type.
+The supported-Paru gate selects both roots explicitly.
+
+A disposable reproduction also exposed a process-exit race: Linux can report
+`ESRCH`, not only `ENOENT`, when a process disappears while reading its procfs
+status. Cleanup treats both as a stopped process, while other read errors still
+retain the operation instead of risking deletion of active work.
+
+These source and test changes require a new immutable checkpoint and package
+identity. The r31 evidence below remains historical evidence, not delivery of
+the recovery changes. Re-pin and rerun package and installed-Paru gates before
+declaring this candidate ready.
+
+### Retained r31: operation-owned temporary cleanup
+
+Issue #97 gives each AUR operation private clones. Downloads, built archives,
+audit scratch and transaction files remain until Paru and installation finish,
+then only that operation is removed. Success, failure, cancellation and
+handled signals are covered. After SIGKILL, the next AUR operation collects
+identified abandoned work only when its subprocess leases and groups are idle.
+Concurrent work, legacy clones, arbitrary paths and external caches are spared.
+This is temporary storage, not a durable cache, on either tmpfs or disk.
+
+Package: `0.1.0.r31.ge7b30ea-1`.
+Immutable source: `e7b30eaa69959bb4e73016b5f6a5af040e195939`.
+Archive SHA-256:
+`dc55f81c57f1db30e5a6d2dad4730eb65d530930a0c1bd418bfe40300adc976f`.
+This remote checkpoint includes main at
+`318f0bb0cdf4ba0072410e47833a1198f0e615f4`.
+It includes direct Codex bundle input.
+Preserve the checkpoint and earlier pins in merge history without squash.
+
+Non-root Arch metadata generation and comparison, authenticated archive
+checksums, freshness, namcap, Go tests and vet passed. The package gate moved
+from r30 to r31 with previous archives still present, without `--force`,
+and preserved custom configuration. Both disposable gates exited 0 and reported
+`auroscope 0.1.0.r31.ge7b30ea-1`.
+
+Installed `/usr/bin/auroscope` passed cleanup on disk and tmpfs after repeated
+success, acquisition/build failure, cancel, EOF, skip and a handled signal.
+SIGKILL left a live orphan protected; its work was collected after it stopped.
+Concurrency, ownership, symlink boundaries and all four handled review signals
+were tested. The real supported Paru gate repeated installations on tmpfs,
+retained edited recipes through re-audit/build, and re-audited after cleanup
+made the historical local commit unavailable, preserving #89.
+Identity-drift refusal, retry, native options and audit-free official installs
+also passed. SQLite baselines and audit history remain outside cleanup.
+
+Evidence is retained under `build/issue-97`, including package and Paru logs.
+The Docker caller timed out during the Paru gate; the same container completed
+with exit 0 and its full log was recovered, without repeating the build.
+Providers are deterministic, not a new live-model qualification. No workstation
+installation, deployment or merge was performed.
+
 ### Verified r29: MIT licensing
 
 Package `0.1.0.r29.gb922b4c-1` pins source

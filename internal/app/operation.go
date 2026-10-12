@@ -233,7 +233,9 @@ func operationGroupsAlive(dir string) (bool, error) {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "stat"))
-		if os.IsNotExist(err) {
+		// A process may exit after enumeration or while procfs opens stat.
+		// Linux reports either ENOENT or ESRCH for this ordinary disappearance.
+		if os.IsNotExist(err) || errors.Is(err, syscall.ESRCH) {
 			continue
 		}
 		if err != nil {

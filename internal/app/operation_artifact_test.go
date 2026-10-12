@@ -21,7 +21,12 @@ func TestTemporaryArchivesLifecycle(t *testing.T) {
 			t.Fatalf("build: %v\n%s", err, out)
 		}
 	}
-	roots := []struct{ name, parent string }{{"disk", ""}}
+	// TMPDIR may be on disk or tmpfs. Only explicitly selected roots claim a
+	// filesystem type; keep exercising the normal temporary root on either.
+	roots := []struct{ name, parent string }{{"default", ""}}
+	if parent := os.Getenv("AUROSCOPE_TEST_DISK_ROOT"); parent != "" {
+		roots = append(roots, struct{ name, parent string }{"disk", parent})
+	}
 	if parent := os.Getenv("AUROSCOPE_TEST_TMPFS_ROOT"); parent != "" {
 		roots = append(roots, struct{ name, parent string }{"tmpfs", parent})
 	}
@@ -44,7 +49,7 @@ func TestTemporaryArchivesLifecycle(t *testing.T) {
 			if err := syscall.Statfs(root, &stat); err != nil {
 				t.Fatal(err)
 			}
-			if (stat.Type == 0x01021994) != (fs.name == "tmpfs") {
+			if fs.name != "default" && (stat.Type == 0x01021994) != (fs.name == "tmpfs") {
 				t.Fatalf("unexpected filesystem %x for %s", stat.Type, fs.name)
 			}
 			t.Logf("verified %s root filesystem type %x", fs.name, stat.Type)

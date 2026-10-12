@@ -71,6 +71,7 @@ AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
 
 if [[ "${AUROSCOPE_E2E_SOURCE_ONLY:-0}" == 1 ]]; then
 AUROSCOPE_TEST_BINARY=/usr/local/bin/auroscope \
+  AUROSCOPE_TEST_DISK_ROOT=/work \
   AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestTemporary' -count=1 -v -timeout=120s
@@ -124,6 +125,7 @@ AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestSelectionRealParuColors$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
+  AUROSCOPE_TEST_DISK_ROOT=/work \
   AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^(TestTemporaryArchivesLifecycle|TestTemporaryOperation.*|TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
