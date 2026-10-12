@@ -61,6 +61,20 @@ Paru retains its final installation confirmation. Skipping a dependency may prev
 the remaining installation; cancelling AUR work does not undo completed official
 updates. Local recipe builds (`-B`, `--build`, local paths) are outside scope.
 
+Each AUR operation uses private temporary clones, kept until Paru and its
+installation finish, then removed on success, failure or cancellation. Handled
+signals also end the operation and clean it. After SIGKILL or a crash, abandoned
+operations are collected on the next AUR operation, only after their processes
+have stopped. Concurrent operations use separate clones. SQLite history remains.
+
+`AUROSCOPE_CLONE_DIR` selects the temporary root (by default
+`${TMPDIR:-/tmp}/auroscope-clones`). For audited installs, `--clonedir` and
+`--builddir` likewise select a root, not a shared clone. This is not a durable
+archive cache, on tmpfs or disk. Legacy clones and independently configured
+Paru/makepkg caches are not purged. Recipe edits survive through re-audit and
+build, not between operations; if an edited baseline is no longer available,
+the next audit reviews the full current recipe with a warning, as before.
+
 ## Configure
 
 With no configuration file, AURoscope uses Codex CLI and requests `gpt-5.6-luna`.

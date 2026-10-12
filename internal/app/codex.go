@@ -96,7 +96,7 @@ func (c codexClient) audit(bundle auditBundle, config runConfig) (auditReport, e
 	if err := c.verifyVersion(config); err != nil {
 		return auditReport{}, err
 	}
-	tmp, err := os.MkdirTemp("", "auroscope-codex-*")
+	tmp, err := config.temporaryDirectory("auroscope-codex-*")
 	if err != nil {
 		return auditReport{}, err
 	}
@@ -125,6 +125,9 @@ func (c codexClient) audit(bundle auditBundle, config runConfig) (auditReport, e
 	}
 	cmd := exec.Command(c.path, append(args, prompt+codexInputInstruction)...)
 	cmd.Dir = tmp
+	if config.operation != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, config.operation.lock)
+	}
 	var stdout, stderr limitedBuffer
 	stdout.limit = maxCodexDiagnosticBytes
 	stderr.limit = maxCodexDiagnosticBytes
@@ -132,7 +135,7 @@ func (c codexClient) audit(bundle auditBundle, config runConfig) (auditReport, e
 	cmd.Stdin = bytes.NewReader(data)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := runCodexCommand(cmd, config.signals, config.codexTimeout, config.stdout); err != nil {
+	if err := runCodexCommand(cmd, config.signals, config.codexTimeout, config.stdout, config.operation); err != nil {
 		return auditReport{}, fmt.Errorf("Codex CLI failed: %w: %s", err, codexFailureDiagnostic(stdout.String(), stderr.String()))
 	}
 	reportFile, err := os.Open(reportPath)
@@ -163,13 +166,16 @@ func auditPrompt() string {
 
 func (c codexClient) verifyVersion(config runConfig) error {
 	cmd := exec.Command(c.path, "--version")
+	if config.operation != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, config.operation.lock)
+	}
 	var stdout bytes.Buffer
 	var stderr limitedBuffer
 	stderr.limit = maxCodexDiagnosticBytes
 	cmd.Stdin = bytes.NewReader(nil)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := runCodexCommand(cmd, config.signals, config.codexTimeout, nil); err != nil {
+	if err := runCodexCommand(cmd, config.signals, config.codexTimeout, nil, config.operation); err != nil {
 		return fmt.Errorf("Codex CLI version check failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	version := stdout.String()
@@ -232,14 +238,21 @@ func codexFailureDiagnostic(stdout, stderr string) string {
 	return escapeTerminal(strings.Join(parts, "\n"))
 }
 
-func runCodexCommand(cmd *exec.Cmd, signals <-chan os.Signal, timeout time.Duration, progress io.Writer) error {
-	return runAuditCommand(cmd, signals, timeout, progress, "Codex")
+func runCodexCommand(cmd *exec.Cmd, signals <-chan os.Signal, timeout time.Duration, progress io.Writer, operation ...*temporaryOperation) error {
+	return runAuditCommand(cmd, signals, timeout, progress, "Codex", operation...)
 }
 
-func runAuditCommand(cmd *exec.Cmd, signals <-chan os.Signal, timeout time.Duration, progress io.Writer, label string) error {
+func runAuditCommand(cmd *exec.Cmd, signals <-chan os.Signal, timeout time.Duration, progress io.Writer, label string, operation ...*temporaryOperation) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return err
+	}
+	if len(operation) > 0 && operation[0] != nil {
+		if err := operation[0].recordProcessGroup(cmd.Process.Pid); err != nil {
+			killCodexProcessGroup(cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+			return err
+		}
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- cmd.Wait() }()
