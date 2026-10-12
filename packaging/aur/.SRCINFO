@@ -1,6 +1,6 @@
 pkgbase = auroscope
 	pkgdesc = LLM-first safety review wrapper around Paru and Pacman
-	pkgver = 0.1.0.r31.ge7b30ea
+	pkgver = 0.1.0.r32.ged0c148
 	pkgrel = 1
 	url = https://git.2027a.net/2027a/auroscope
 	arch = x86_64
@@ -11,7 +11,7 @@ pkgbase = auroscope
 	depends = glibc
 	depends = paru
 	conflicts = paru<=2.1.0
-	source = auroscope-0.1.0.r31.ge7b30ea.tar.gz::https://git.2027a.net/2027a/auroscope/archive/e7b30eaa69959bb4e73016b5f6a5af040e195939.tar.gz
-	sha256sums = dc55f81c57f1db30e5a6d2dad4730eb65d530930a0c1bd418bfe40300adc976f
+	source = auroscope-0.1.0.r32.ged0c148.tar.gz::https://git.2027a.net/2027a/auroscope/archive/ed0c148fe5140107f9ba48456385f172657379b4.tar.gz
+	sha256sums = 5477c645c10a0612e9482afe3555b2b0f060e5cd1d6013a911e0d8d23f109554
 
 pkgname = auroscope

@@ -75,7 +75,7 @@ the full pinned-Paru integration gate and the opt-in real Codex audit test.
 
 ## Upstream snapshot
 
-### Recovery after the r31 verification
+### Verified r32: recovery after the r31 verification
 
 The later host check exposed a test assumption: `TMPDIR` was labelled as disk
 even when it was tmpfs. The test now exercises the default temporary root on
@@ -87,10 +87,34 @@ A disposable reproduction also exposed a process-exit race: Linux can report
 status. Cleanup treats both as a stopped process, while other read errors still
 retain the operation instead of risking deletion of active work.
 
-These source and test changes require a new immutable checkpoint and package
-identity. The r31 evidence below remains historical evidence, not delivery of
-the recovery changes. Re-pin and rerun package and installed-Paru gates before
-declaring this candidate ready.
+Package: `0.1.0.r32.ged0c148-1`.
+Immutable source: `ed0c148fe5140107f9ba48456385f172657379b4`.
+Archive SHA-256:
+`5477c645c10a0612e9482afe3555b2b0f060e5cd1d6013a911e0d8d23f109554`.
+The checkpoint is present in remote history and includes current main at
+`318f0bb0cdf4ba0072410e47833a1198f0e615f4`.
+Preserve it and earlier source pins without squash.
+
+Non-root Arch metadata generation and exact comparison, authenticated archive
+checksums, freshness, namcap, Go tests and vet passed. The package gate
+upgraded r31 to r32 with the old package and debug archives present, without
+`--force`, and preserved custom configuration. Both disposable gates exited 0
+and reported `auroscope 0.1.0.r32.ged0c148-1`.
+
+The installed artifact passed repeated cleanup on explicitly verified disk and
+tmpfs roots, acquisition/build failure, cancel, EOF, skip, handled signals,
+SIGKILL recovery and concurrent-operation protection. The real supported Paru
+gate repeated installations on tmpfs without retained clones or archives and
+preserved edit/re-audit/build, full audit after historical clone loss, SQLite
+history, identity-drift refusal, retry and audit-free official installs.
+Host tests and the race detector also passed; no gate assertion was removed.
+
+Evidence and previous/current package archives are retained under
+`build/issue-97/r32`, with a checksum-verified evidence archive.
+Test containers are removed after capture.
+Providers are deterministic, not a new live-model qualification.
+Legacy clones and external caches are not purged.
+No workstation installation, deployment or merge was performed.
 
 ### Retained r31: operation-owned temporary cleanup
 
