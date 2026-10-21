@@ -62,8 +62,20 @@ targets against the private repository. Its final install is intercepted:
 the test checks all selected names, native status and absence of audit state,
 without installing Proton packages. The regression also covers mixed AUR
 approval/skip and is included in the installed-artifact release gate.
-These source checks do not qualify a delivered package. The immutable source
-checkpoint, updated recipe and full package/integration gates remain required.
+The subsequent r33 package pins source
+`a16d32aa4fd86d86e3bfa90ef60e543f40396c63` and installs as
+`auroscope 0.1.0.r33.ga16d32a-1`. Full Go race tests and vet pass.
+Both the package/upgrade gate and the installed-artifact supported-Paru gate
+exit 0. The r32 archive remains present during the upgrade without `--force`.
+The installed regression covers native search, plus explicit targets in both
+application-first and dependency-first order. Mixed AUR approval/skip,
+refusal of missing names and native exit statuses remain covered.
+The complete gate also builds and installs the benign AUR fixture, exercises
+edit/re-audit and drift refusal/retry, and keeps official installs audit-free.
+Codex is a deterministic fixture in this integration gate, not a live audit.
+Verified logs and package archives are retained under the profile's
+`work/artifacts/auroscope/issue-99/`; gate containers were removed afterward.
+No installation was performed on Mathieu's workstation.
 
 ### Option operands and target boundaries (issue #87)
 
