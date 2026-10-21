@@ -46,11 +46,8 @@ func (o orchestrator) run(originalArgs, targets []string) (runErr error) {
 	if err != nil {
 		return err
 	}
-	plan, err := order.plan()
+	plan, err := order.plan(targets...)
 	if err != nil {
-		return err
-	}
-	if err := order.ensureTargetsClassified(targets); err != nil {
 		return err
 	}
 	if len(plan.AURPkgbases) == 0 {

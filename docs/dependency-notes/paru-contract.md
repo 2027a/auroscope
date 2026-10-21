@@ -37,6 +37,46 @@ AURoscope must preserve Paru's native selection and resolver while obtaining a m
 
 ## Current use under ADR-0015
 
+### Selected packages already encountered as dependencies (issue #99)
+
+Pinned Paru's `src/order.rs` prints each resolver package's stored role.
+In `aur-depends 5.0.0`, `resolve_repo_pkg` returns immediately for a name
+already visited. A package first encountered as another target's dependency
+can therefore remain `DEP` or `MAKE` when explicitly selected later.
+`TARGET` is not a complete inventory of the user's selections.
+
+A private official repository reproduces the reported relationship with
+actual pinned Paru: selecting `protonmail-bridge`, `proton-vpn-gtk-app` and
+`proton-vpn-daemon` emits the daemon only as `REPO DEP extra`.
+The old adapter's deterministic regression fails with the exact reported
+unclassified-target error. The corrected plan matches each requested name
+against all `REPO` and `AUR` package records, independently of that role.
+Selected dependencies remain final targets, including when another AUR
+target is skipped. Unselected dependencies do not become explicit targets.
+Absent names, provider aliases and a pkgbase without its named package
+still fail closed; every resolved AUR pkgbase still requires audit.
+
+Source tests and vet pass. The disposable Arch selection gate passes with
+actual pinned Paru, including native numbered multi-selection and explicit
+targets against the private repository. Its final install is intercepted:
+the test checks all selected names, native status and absence of audit state,
+without installing Proton packages. The regression also covers mixed AUR
+approval/skip and is included in the installed-artifact release gate.
+The subsequent r33 package pins source
+`a16d32aa4fd86d86e3bfa90ef60e543f40396c63` and installs as
+`auroscope 0.1.0.r33.ga16d32a-1`. Full Go race tests and vet pass.
+Both the package/upgrade gate and the installed-artifact supported-Paru gate
+exit 0. The r32 archive remains present during the upgrade without `--force`.
+The installed regression covers native search, plus explicit targets in both
+application-first and dependency-first order. Mixed AUR approval/skip,
+refusal of missing names and native exit statuses remain covered.
+The complete gate also builds and installs the benign AUR fixture, exercises
+edit/re-audit and drift refusal/retry, and keeps official installs audit-free.
+Codex is a deterministic fixture in this integration gate, not a live audit.
+Verified logs and package archives are retained under the profile's
+`work/artifacts/auroscope/issue-99/`; gate containers were removed afterward.
+No installation was performed on Mathieu's workstation.
+
 ### Option operands and target boundaries (issue #87)
 
 The operand rules were checked against `src/command_line.rs::parse_arg`,

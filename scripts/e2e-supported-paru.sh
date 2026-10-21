@@ -58,7 +58,7 @@ GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 go build -o /usr/l
 # user's disabled Color setting and redirected output. No recipe is executed.
 AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
-  go test ./internal/app -run '^TestSelectionRealParuColors$' -count=1 -v -timeout=120s
+  go test ./internal/app -run '^(TestSelectionRealParuColors|TestSelectedDependencyRealParu)$' -count=1 -v -timeout=120s
 
 if [[ "${AUROSCOPE_E2E_SELECTION_ONLY:-0}" == 1 ]]; then
   echo 'supported Paru selection-only gate passed (no PKGBUILD execution)'
@@ -123,7 +123,7 @@ ln -s /usr/bin/auroscope /usr/local/bin/auroscope
 AUROSCOPE_TEST_REAL_PARU=/usr/local/bin/paru-real \
   AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
-  go test ./internal/app -run '^TestSelectionRealParuColors$' -count=1 -v -timeout=120s
+  go test ./internal/app -run '^(TestSelectionRealParuColors|TestSelectedDependency.*)$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   AUROSCOPE_TEST_DISK_ROOT=/work \
   AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
