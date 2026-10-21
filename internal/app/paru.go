@@ -255,10 +255,18 @@ func (paru paruClient) finishEmptyAURUpdate() int {
 	return reportCommandError(config.stderr, result, "AUR update")
 }
 
-func (result orderResult) plan() (resolvedPlan, error) {
+func (result orderResult) plan(targets ...string) (resolvedPlan, error) {
 	if len(result.Records) == 0 {
 		return resolvedPlan{}, incompatibleParu("order emitted no records")
 	}
+	// Paru keeps the role from the first dependency traversal. A requested
+	// package may therefore appear only as DEP or MAKE, not TARGET. Match exact
+	// emitted names; never infer a provider or accept an absent package.
+	requested := map[string]bool{}
+	for _, target := range targets {
+		requested[unqualifiedTarget(target)] = true
+	}
+	classified := map[string]bool{}
 	seenRepo := map[string]bool{}
 	seenAUR := map[string]bool{}
 	seenAURTarget := map[string]map[string]bool{}
@@ -267,7 +275,8 @@ func (result orderResult) plan() (resolvedPlan, error) {
 		switch record.Kind {
 		case "REPO":
 			name := record.Fields[2]
-			if record.Fields[0] == "TARGET" && !seenRepo[name] {
+			classified[name] = true
+			if (record.Fields[0] == "TARGET" || requested[name]) && !seenRepo[name] {
 				seenRepo[name] = true
 				plan.RepoTargets = append(plan.RepoTargets, name)
 			}
@@ -277,15 +286,17 @@ func (result orderResult) plan() (resolvedPlan, error) {
 				seenAUR[pkgbase] = true
 				plan.AURPkgbases = append(plan.AURPkgbases, pkgbase)
 			}
-			if record.Fields[0] == "TARGET" {
+			for _, name := range record.Fields[2:] {
+				classified[name] = true
+				if record.Fields[0] != "TARGET" && !requested[name] {
+					continue
+				}
 				if seenAURTarget[pkgbase] == nil {
 					seenAURTarget[pkgbase] = map[string]bool{}
 				}
-				for _, name := range record.Fields[2:] {
-					if !seenAURTarget[pkgbase][name] {
-						seenAURTarget[pkgbase][name] = true
-						plan.AURTargetsByPkgbase[pkgbase] = append(plan.AURTargetsByPkgbase[pkgbase], name)
-					}
+				if !seenAURTarget[pkgbase][name] {
+					seenAURTarget[pkgbase][name] = true
+					plan.AURTargetsByPkgbase[pkgbase] = append(plan.AURTargetsByPkgbase[pkgbase], name)
 				}
 			}
 		case "MISSING", "CONFLICT":
@@ -294,28 +305,12 @@ func (result orderResult) plan() (resolvedPlan, error) {
 			return resolvedPlan{}, incompatibleParu("order emitted unsupported SRCINFO record")
 		}
 	}
-	return plan, nil
-}
-
-func (result orderResult) ensureTargetsClassified(targets []string) error {
-	recordsByTarget := map[string]bool{}
-	for _, record := range result.Records {
-		if (record.Kind == "REPO" || record.Kind == "AUR") && record.Fields[0] == "TARGET" {
-			if record.Kind == "REPO" {
-				recordsByTarget[record.Fields[2]] = true
-			} else {
-				for _, name := range record.Fields[2:] {
-					recordsByTarget[name] = true
-				}
-			}
-		}
-	}
 	for _, target := range targets {
-		if !recordsByTarget[unqualifiedTarget(target)] {
-			return incompatibleParu("requested target %q was not classified", target)
+		if !classified[unqualifiedTarget(target)] {
+			return resolvedPlan{}, incompatibleParu("requested target %q was not classified", target)
 		}
 	}
-	return nil
+	return plan, nil
 }
 
 func unqualifiedTarget(target string) string {

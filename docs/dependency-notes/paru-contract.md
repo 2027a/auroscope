@@ -37,6 +37,34 @@ AURoscope must preserve Paru's native selection and resolver while obtaining a m
 
 ## Current use under ADR-0015
 
+### Selected packages already encountered as dependencies (issue #99)
+
+Pinned Paru's `src/order.rs` prints each resolver package's stored role.
+In `aur-depends 5.0.0`, `resolve_repo_pkg` returns immediately for a name
+already visited. A package first encountered as another target's dependency
+can therefore remain `DEP` or `MAKE` when explicitly selected later.
+`TARGET` is not a complete inventory of the user's selections.
+
+A private official repository reproduces the reported relationship with
+actual pinned Paru: selecting `protonmail-bridge`, `proton-vpn-gtk-app` and
+`proton-vpn-daemon` emits the daemon only as `REPO DEP extra`.
+The old adapter's deterministic regression fails with the exact reported
+unclassified-target error. The corrected plan matches each requested name
+against all `REPO` and `AUR` package records, independently of that role.
+Selected dependencies remain final targets, including when another AUR
+target is skipped. Unselected dependencies do not become explicit targets.
+Absent names, provider aliases and a pkgbase without its named package
+still fail closed; every resolved AUR pkgbase still requires audit.
+
+Source tests and vet pass. The disposable Arch selection gate passes with
+actual pinned Paru, including native numbered multi-selection and explicit
+targets against the private repository. Its final install is intercepted:
+the test checks all selected names, native status and absence of audit state,
+without installing Proton packages. The regression also covers mixed AUR
+approval/skip and is included in the installed-artifact release gate.
+These source checks do not qualify a delivered package. The immutable source
+checkpoint, updated recipe and full package/integration gates remain required.
+
 ### Option operands and target boundaries (issue #87)
 
 The operand rules were checked against `src/command_line.rs::parse_arg`,

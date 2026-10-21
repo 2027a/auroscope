@@ -506,7 +506,7 @@ func TestParuPlanRejectsSRCINFORecordsBeforeExecution(t *testing.T) {
 
 func TestParuPlanSupportsVariableLengthAURSplitRecords(t *testing.T) {
 	result := orderResult{Records: []orderRecord{{Kind: "AUR", Fields: []string{"TARGET", "split-base", "split-member", "split-helper"}}}}
-	plan, err := result.plan()
+	plan, err := result.plan("split-member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,9 +515,6 @@ func TestParuPlanSupportsVariableLengthAURSplitRecords(t *testing.T) {
 	}
 	if !reflect.DeepEqual(plan.AURTargetsByPkgbase["split-base"], []string{"split-member", "split-helper"}) {
 		t.Fatalf("targets = %#v", plan.AURTargetsByPkgbase)
-	}
-	if err := result.ensureTargetsClassified([]string{"split-member"}); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -553,7 +550,7 @@ func TestParuPlanRejectsUnclassifiedRequestedTarget(t *testing.T) {
 	if _, err := result.plan(); err != nil {
 		t.Fatal(err)
 	}
-	if err := result.ensureTargetsClassified([]string{"hello"}); err == nil || !strings.Contains(err.Error(), "not classified") {
+	if _, err := result.plan("hello"); err == nil || !strings.Contains(err.Error(), "not classified") {
 		t.Fatalf("error = %v", err)
 	}
 }
