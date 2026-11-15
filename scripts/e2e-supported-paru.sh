@@ -38,10 +38,12 @@ printf 'builder ALL=(ALL:ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/auroscope-e2e
 chmod 0440 /etc/sudoers.d/auroscope-e2e
 
 # Build the exact issue-21 Paru surface against this image's libalpm 16.
+# Like alpm, refresh only the OpenSSL bindings: the locked openssl-sys 0.9.111
+# rejects the OpenSSL 4 now in Arch. Paru's own code stays at PARU_COMMIT.
 git clone --quiet https://github.com/Morganamilo/paru.git /work/paru
 cd /work/paru
 git checkout --quiet "$PARU_COMMIT"
-cargo update alpm alpm-utils
+cargo update alpm alpm-utils openssl openssl-sys
 cargo build --release
 install -m 0755 target/release/paru /usr/local/bin/paru-real
 
