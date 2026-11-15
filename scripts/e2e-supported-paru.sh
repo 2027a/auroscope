@@ -32,7 +32,7 @@ set -euo pipefail
 [[ "$PWD" == / ]]
 
 # All package-manager activity is confined to this disposable container.
-pacman --noconfirm --needed -Sy git cargo go sudo
+pacman --noconfirm --needed -Syu git cargo go sudo
 useradd --create-home --shell /bin/bash builder
 printf 'builder ALL=(ALL:ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/auroscope-e2e
 chmod 0440 /etc/sudoers.d/auroscope-e2e

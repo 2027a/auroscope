@@ -50,7 +50,7 @@ case "$ROOT:$DB:$CACHE" in
 esac
 
 mkdir -p "$ROOT" "$DB" "$CACHE" /work
-pacman --noconfirm --needed -Sy git go
+pacman --noconfirm --needed -Syu git go
 
 cp -a /src /work/auroscope
 cd /work/auroscope
