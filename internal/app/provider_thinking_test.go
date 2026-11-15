@@ -86,7 +86,7 @@ done
 [ "$count" -le 1 ]
 printf '%s' "$value" > "$CAPTURE_EFFORT"
 case "$value" in future*) exit 2 ;; esac
-printf '%s' '{"type":"result","subtype":"success","is_error":false,"result":"{\"summary\":\"reviewed\",\"risk\":\"low\",\"findings\":[],\"uncertainty\":\"\",\"inspect\":[]}"}'
+printf '%s' '{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":{"summary":"reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}}'
 `)
 			config := auditConfig{Provider: "claude-code"}
 			if effort != "" {

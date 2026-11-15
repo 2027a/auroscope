@@ -49,9 +49,14 @@ Choose exactly one provider. Minimal CLI configurations are:
 ```
 
 CLI authentication stays with the CLI; no API key is stored by AURoscope. Claude
-Code uses the `claude` executable on `PATH`, with tools, MCP, user/project settings,
-skills and ordinary hooks disabled for the audit. Native login credentials remain
-available. Model selection is optional for CLI providers via `model`.
+Code uses the `claude` executable on `PATH` (or `AUROSCOPE_CLAUDE`), with tools,
+MCP, user/project settings, skills and ordinary hooks disabled for the audit.
+Like Codex's `--output-schema`, the report schema is passed with `--json-schema`;
+only Claude's schema-constrained `structured_output` is accepted as a report, never
+its free-text answer. Native login credentials remain available. If
+`ANTHROPIC_API_KEY` is set in your environment, Claude Code may use that key
+instead of your subscription login. Model selection is optional for CLI providers
+via `model`.
 
 For API providers, specify an actual model identifier available to your account:
 
@@ -87,8 +92,9 @@ Anthropic must support Messages with `output_config.format`. Refusal, truncation
 HTTP error or invalid local report validation offers retry, skip or cancel only.
 There is no automatic provider fallback, schema-mode downgrade or audit bypass.
 
-Compatibility is not guaranteed by a provider name. Claude Code 2.1.269 was checked
-with its real executable and simulated transport in isolated Arch. API contracts
+Compatibility is not guaranteed by a provider name. Claude Code 2.1.325 was checked
+with its real executable and simulated transport in an offline Arch container,
+and with real inference on an inert fixture. API contracts
 have deterministic local HTTPS tests; no new live service/model is qualified yet.
 See the [provider contract note](dependency-notes/audit-providers.md) for exact
 evidence, limitations and opt-in live qualification commands.
@@ -118,7 +124,8 @@ upgrades do not own or replace user configuration.
 ## Other settings
 
 - `EDITOR`: executable for recipe editing, with no embedded arguments (for example `nvim`).
-- `AUROSCOPE_PARU` and `AUROSCOPE_CODEX`: executable paths, defaulting to `paru` and `codex` on `PATH`.
+- `AUROSCOPE_PARU`, `AUROSCOPE_CODEX` and `AUROSCOPE_CLAUDE`: executable paths,
+  defaulting to `paru`, `codex` and `claude` on `PATH`.
 - `AUROSCOPE_STATE`: SQLite path, defaulting to `$HOME/.local/state/auroscope/state.sqlite3`.
   The current implementation does not read `XDG_STATE_HOME`.
 - `AUROSCOPE_CLONE_DIR`: recipe work directory, defaulting to `auroscope-clones`

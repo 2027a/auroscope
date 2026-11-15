@@ -23,6 +23,7 @@ type runConfig struct {
 	userConfig    bool
 	paruPath      string
 	codexPath     string
+	claudePath    string
 	auditModel    string
 	auditThinking *string
 	auditPrompt   string
@@ -113,6 +114,12 @@ func (config runConfig) withDefaults() runConfig {
 		config.codexPath = os.Getenv("AUROSCOPE_CODEX")
 		if config.codexPath == "" {
 			config.codexPath = "codex"
+		}
+	}
+	if config.claudePath == "" {
+		config.claudePath = os.Getenv("AUROSCOPE_CLAUDE")
+		if config.claudePath == "" {
+			config.claudePath = "claude"
 		}
 	}
 	if config.editorPath == "" {

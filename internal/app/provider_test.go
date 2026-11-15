@@ -18,6 +18,12 @@ import (
 
 const providerTestReport = `{"summary":"recipe reviewed","risk":"low","findings":[],"uncertainty":"","inspect":["PKGBUILD"]}`
 
+// Claude Code returns the schema-constrained report in structured_output; the
+// text result is prose, here deliberately fenced Markdown that is not a report.
+func claudeTestEnvelope() map[string]any {
+	return map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": "```json\n" + providerTestReport + "\n```", "structured_output": json.RawMessage(providerTestReport)}
+}
+
 func writeProviderConfig(t *testing.T, text string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -262,7 +268,7 @@ pwd > "$CWD_FILE"
 cat > "$INPUT_FILE"
 printf '%s' "$CLAUDE_OUTPUT"
 `)
-	output, _ := json.Marshal(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": providerTestReport})
+	output, _ := json.Marshal(claudeTestEnvelope())
 	t.Setenv("CLAUDE_OUTPUT", string(output))
 	prompt := "Custom shared audit prompt"
 	_, err := auditClaude(auditBundle{}, auditConfig{Model: "selected-model", Prompt: &prompt}, runConfig{}.withDefaults())
@@ -284,7 +290,30 @@ printf '%s' "$CLAUDE_OUTPUT"
 	if _, err := os.Stat(strings.TrimSpace(readString(t, cwdPath))); !os.IsNotExist(err) {
 		t.Fatal("private attempt directory retained")
 	}
-	for _, output := range []string{`{"type":"result","subtype":"error","is_error":true,"result":"credential-fixture"}`, `{"type":"result","subtype":"success","is_error":false,"result":"not json"}`} {
+	other := t.TempDir()
+	writeExecutable(t, other, "claude-custom", "#!/bin/sh\ncat >/dev/null\n: > \"$ARGS_FILE.custom\"\nprintf '%s' \"$CLAUDE_OUTPUT\"\n")
+	t.Setenv("AUROSCOPE_CLAUDE", filepath.Join(other, "claude-custom"))
+	if _, err := auditClaude(auditBundle{}, auditConfig{}, runConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(argsPath + ".custom"); err != nil {
+		t.Fatal("AUROSCOPE_CLAUDE did not select the executable")
+	}
+	t.Setenv("AUROSCOPE_CLAUDE", "")
+	if !strings.Contains(args, "--json-schema\n"+auditOutputSchema+"\n") {
+		t.Error("audit schema was not passed as structured output")
+	}
+	// A schema-valid report in the human text result alone is not an audit:
+	// only the structured output object is accepted.
+	textOnly, _ := json.Marshal(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": providerTestReport})
+	for _, output := range []string{
+		`{"type":"result","subtype":"error","is_error":true,"result":"credential-fixture"}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"not json"}`,
+		string(textOnly),
+		`{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":null}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":"` + strings.ReplaceAll(providerTestReport, `"`, `\"`) + `"}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":{"summary":"x","risk":"safe","findings":[],"uncertainty":"","inspect":[]}}`,
+	} {
 		t.Setenv("CLAUDE_OUTPUT", output)
 		_, err := auditClaude(auditBundle{}, auditConfig{}, runConfig{}.withDefaults())
 		if err == nil || strings.Contains(err.Error(), "credential-fixture") {
@@ -313,7 +342,7 @@ printf 'audit\n' >> "$CLAUDE_CALLS"
 if [ "$CLAUDE_FAIL" = 1 ]; then printf 'private-diagnostic' >&2; exit 3; fi
 printf '%s' "$CLAUDE_OUTPUT"
 `)
-			output, _ := json.Marshal(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": providerTestReport})
+			output, _ := json.Marshal(claudeTestEnvelope())
 			t.Setenv("CLAUDE_OUTPUT", string(output))
 			input := "approve\n"
 			wantCalls, wantStatus := 1, 0
