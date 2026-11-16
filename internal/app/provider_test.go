@@ -263,6 +263,7 @@ func TestProviderClaudeContract(t *testing.T) {
 	t.Setenv("CWD_FILE", cwdPath)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	writeExecutable(t, dir, "claude", `#!/bin/sh
+if [ "$1" = --version ]; then printf '2.1.325 (Claude Code)\n'; exit 0; fi
 printf '%s\n' "$@" > "$ARGS_FILE"
 pwd > "$CWD_FILE"
 cat > "$INPUT_FILE"
@@ -291,7 +292,7 @@ printf '%s' "$CLAUDE_OUTPUT"
 		t.Fatal("private attempt directory retained")
 	}
 	other := t.TempDir()
-	writeExecutable(t, other, "claude-custom", "#!/bin/sh\ncat >/dev/null\n: > \"$ARGS_FILE.custom\"\nprintf '%s' \"$CLAUDE_OUTPUT\"\n")
+	writeExecutable(t, other, "claude-custom", "#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.325 (Claude Code)'; exit 0; fi\ncat >/dev/null\n: > \"$ARGS_FILE.custom\"\nprintf '%s' \"$CLAUDE_OUTPUT\"\n")
 	t.Setenv("AUROSCOPE_CLAUDE", filepath.Join(other, "claude-custom"))
 	if _, err := auditClaude(auditBundle{}, auditConfig{}, runConfig{}); err != nil {
 		t.Fatal(err)
@@ -337,6 +338,7 @@ func TestProviderSelectionAndNoBypass(t *testing.T) {
 			t.Setenv("CLAUDE_CALLS", claudeCalls)
 			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 			writeExecutable(t, dir, "claude", `#!/bin/sh
+if [ "$1" = --version ]; then printf '2.1.325 (Claude Code)\n'; exit 0; fi
 cat >/dev/null
 printf 'audit\n' >> "$CLAUDE_CALLS"
 if [ "$CLAUDE_FAIL" = 1 ]; then printf 'private-diagnostic' >&2; exit 3; fi

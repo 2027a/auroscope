@@ -76,6 +76,7 @@ func TestProviderClaudeThinking(t *testing.T) {
 			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 			t.Setenv("CAPTURE_EFFORT", filepath.Join(dir, "effort"))
 			writeExecutable(t, dir, "claude", `#!/bin/sh
+if [ "$1" = --version ]; then printf '2.1.325 (Claude Code)\n'; exit 0; fi
 set -eu
 value=''
 count=0

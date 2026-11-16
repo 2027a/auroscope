@@ -55,6 +55,15 @@ hooks and slash commands remove package execution capabilities. The bounded
 bundle is stdin, never the user's terminal input. The executable is `claude` on
 `PATH`, or `AUROSCOPE_CLAUDE`, mirroring `AUROSCOPE_CODEX`.
 
+Version admission (decision issue #103, modelled on ADR-0046): before each audit,
+`claude --version` runs with empty stdin, bounded output, the audit timeout and
+signal handling. Only the strict banner `MAJOR.MINOR.PATCH (Claude Code)`, one
+optional trailing newline, and a numerically compared triplet of at least
+`2.1.325` are admitted, with no ceiling. Older versions, prereleases and
+malformed banners fail the audit before any bundle is sent; the version probe's
+diagnostics stay hidden like the audit's. Admitted means eligible for an audit
+attempt; only 2.1.325 is qualified below.
+
 Like Codex `--output-schema`, the audit schema is passed with `--json-schema`.
 Claude Code then offers the model exactly one tool, `StructuredOutput`, which only
 records the answer, and returns it as the envelope's `structured_output` object.
@@ -94,9 +103,22 @@ with an empty HOME and an inert credential. A loopback server played the model:
 `TestProviderLiveAudit` with `AUROSCOPE_TEST_LIVE_PROVIDER=claude-code` then used
 real inference through Mathieu's native login on the inert fixture metadata, with
 no `model` (the CLI's native default, reported as `claude-opus-5-5`): 8 of 8
-consecutive structured-output audits validated locally. This qualifies the invocation for that CLI version and
-default model only, not other versions or models, and not audit quality on real
-recipes. Unsupported flags fail without fallback.
+consecutive structured-output audits validated locally.
+
+The same test with `AUROSCOPE_TEST_LIVE_MODEL=haiku`, the cheapest model alias
+offered by Claude Code, passed 8 of 8; every envelope reported `claude-haiku-5-5`,
+a `structured_output` object and 2 or 3 turns. A temporary, uncommitted variant
+sent an inert hostile fixture as text only (a `post_install` running
+`curl … | sh` and `chmod 4755`, plus `sha256sums=('SKIP')`): 6 of 6 Haiku reports
+validated locally, all rated `critical` and cited both install-script lines
+correctly. In 4 of the 6, at least one PKGBUILD line number was wrong (usually
+off by two, for instance `source=` cited as line 3 instead of 5); local
+validation only checks that cited lines exist, so line accuracy is a model-quality
+limit, not a contract guarantee.
+
+This qualifies the invocation for that CLI version with its default model and
+`haiku`, not other versions or models, and not audit quality on real recipes.
+Unsupported flags fail without fallback.
 
 `--bare` is not interchangeable: it disables native OAuth/keychain authentication.
 Safe mode preserves native login while suppressing customizations. Managed

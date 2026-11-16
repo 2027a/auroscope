@@ -53,7 +53,10 @@ Code uses the `claude` executable on `PATH` (or `AUROSCOPE_CLAUDE`), with tools,
 MCP, user/project settings, skills and ordinary hooks disabled for the audit.
 Like Codex's `--output-schema`, the report schema is passed with `--json-schema`;
 only Claude's schema-constrained `structured_output` is accepted as a report, never
-its free-text answer. Native login credentials remain available. If
+its free-text answer. Before each audit, `claude --version` must report a stable
+`MAJOR.MINOR.PATCH (Claude Code)` of at least 2.1.325, with no upper limit
+(decision issue #103, the Claude analogue of ADR-0046); older, prerelease or
+malformed banners fail the audit. Native login credentials remain available. If
 `ANTHROPIC_API_KEY` is set in your environment, Claude Code may use that key
 instead of your subscription login. Model selection is optional for CLI providers
 via `model`.
@@ -94,7 +97,9 @@ There is no automatic provider fallback, schema-mode downgrade or audit bypass.
 
 Compatibility is not guaranteed by a provider name. Claude Code 2.1.325 was checked
 with its real executable and simulated transport in an offline Arch container,
-and with real inference on an inert fixture. API contracts
+and with real inference on an inert fixture, using both its default model and the
+cheapest model alias `haiku`. Later versions are admitted by policy, not
+qualified. API contracts
 have deterministic local HTTPS tests; no new live service/model is qualified yet.
 See the [provider contract note](dependency-notes/audit-providers.md) for exact
 evidence, limitations and opt-in live qualification commands.

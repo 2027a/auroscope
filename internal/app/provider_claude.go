@@ -7,10 +7,49 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
+	"strings"
 )
+
+// Issue #103: like ADR-0046 for Codex, admit stable Claude Code versions from
+// the qualified 2.1.325 upward, with no ceiling. Admission is not qualification.
+const minimumClaudeVersion = "2.1.325"
+
+var stableClaudeBanner = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*) \(Claude Code\)$`)
+
+func admitsClaudeVersion(banner string) bool {
+	return admitsStableVersion(stableClaudeBanner, banner, [3]string{"2", "1", "325"})
+}
+
+func verifyClaudeVersion(config runConfig) error {
+	cmd := exec.Command(config.claudePath, "--version")
+	if config.operation != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, config.operation.lock)
+	}
+	var stdout, stderr limitedBuffer
+	stdout.limit = maxCodexDiagnosticBytes
+	stderr.limit = maxCodexDiagnosticBytes
+	cmd.Stdin = bytes.NewReader(nil)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := runAuditCommand(cmd, config.signals, config.codexTimeout, nil, "Claude Code", config.operation); err != nil {
+		// Like the audit itself, never render native CLI diagnostics.
+		return fmt.Errorf("Claude Code version check failed (%s)", claudeFailureCategory(err))
+	}
+	version := stdout.String()
+	if strings.HasSuffix(version, "\n") {
+		version = strings.TrimSuffix(strings.TrimSuffix(version, "\n"), "\r")
+	}
+	if !admitsClaudeVersion(version) {
+		return fmt.Errorf("unsupported Claude Code version %q; minimum stable version is %s (MAJOR.MINOR.PATCH (Claude Code), no upper limit)", version, minimumClaudeVersion)
+	}
+	return nil
+}
 
 func auditClaude(bundle auditBundle, provider auditConfig, config runConfig) (auditReport, error) {
 	config = config.withDefaults()
+	if err := verifyClaudeVersion(config); err != nil {
+		return auditReport{}, err
+	}
 	tmp, err := config.temporaryDirectory("auroscope-claude-*")
 	if err != nil {
 		return auditReport{}, err
