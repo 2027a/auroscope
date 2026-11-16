@@ -2,11 +2,13 @@
 
 ## Status
 
-Proposed in [decision issue #103](https://git.2027a.net/2027a/auroscope/issues/103).
-Mathieu answered "oui, celle actuelle" in the agent conversation; under
-`AGENTS.md`, acceptance still requires his exact standalone `GO DECISION` on that
-issue. Until then, this ADR and its implementation in PR #102 are a candidate,
-not an accepted policy, and PR #102 must not be merged.
+Accepted on 2026-11-16 in [decision issue #103](https://git.2027a.net/2027a/auroscope/issues/103),
+by Mathieu's exact standalone [GO DECISION, comment 4256](https://git.2027a.net/2027a/auroscope/issues/103#issuecomment-4256),
+accepting the proposal in the issue description. The implementation and its
+Arch delivery (package r35) are in PR #102, execution issue #101.
+
+This amends ADR-0066 for Claude Code version admission only, mirroring what
+ADR-0046 does for Codex. Admission remains distinct from qualification.
 
 ## Context
 

@@ -18,9 +18,10 @@ Mathieu accepted the provider extension; separate `MODE: EXECUTION` issue #68
 now carries its implementation and Arch delivery. Codex remains the default;
 candidate code is not proof of packaged delivery or live-provider qualification.
 
-Proposed, not accepted: [ADR-0103 — Claude Code minimum version without a
-ceiling](0103-claude-code-minimum-version-without-ceiling.md), decision issue
-#103, awaiting Mathieu's `GO DECISION`; its candidate implementation is in PR #102.
+Also active: [ADR-0103 — Claude Code minimum version without a
+ceiling](0103-claude-code-minimum-version-without-ceiling.md), accepted by
+Mathieu's `GO DECISION` in decision issue #103; implementation and Arch delivery
+in PR #102, pending human review.
 
 ## Superseded
 

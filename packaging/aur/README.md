@@ -109,8 +109,8 @@ was performed.
 Each `claude-code` audit first runs `claude --version` and admits only a strict
 `MAJOR.MINOR.PATCH (Claude Code)` banner of at least 2.1.325, with no ceiling,
 like ADR-0046 for Codex. An older, prerelease or malformed banner fails the audit
-before any bundle is sent; CLI diagnostics stay hidden. The policy is proposed in
-ADR-0103 and awaits Mathieu's `GO DECISION` on decision issue #103.
+before any bundle is sent; CLI diagnostics stay hidden. The policy is ADR-0103,
+accepted by Mathieu's `GO DECISION` on decision issue #103.
 
 Package: `0.1.0.r35.g999b037-1`.
 Immutable source: `999b037533879cfd81dc9df8f78a6ead86efbf79`, on remote branch
