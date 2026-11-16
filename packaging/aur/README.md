@@ -75,6 +75,35 @@ the full pinned-Paru integration gate and the opt-in real Codex audit test.
 
 ## Upstream snapshot
 
+### Verified r36: audit bypasses from the 2026-11-15 review (#104–#108)
+
+- #105: `--repo` followed by `--aur`, `-a`, `--pkgbuilds` or `--mode=aur` is
+  audited; only a final repository-only mode stays native.
+- #106: every final install without an approved recipe carries the guard with an
+  empty approval list, so an AUR build the plan did not foresee is refused.
+- #107: requested targets keep their spelling (`extra/tree`). At pinned Paru,
+  `aur/` targets are reported `MISSING` by `-P --order` and refused before audit.
+- #108: the post-edit snapshot commit is never signed and runs no hooks.
+- #104: UTF-8 files containing NUL are audit text; `PKGBUILD` and `*.install` must
+  be UTF-8; the diff shows text files as text whatever `.gitattributes` says, and
+  runs no textconv driver. The prompt asks to report executed opaque recipe files.
+
+Package: `0.1.0.r36.gb3cf481-1`.
+Immutable source: `b3cf481b90fec1cef3ae171681e54d0bdd2fd26f`, on remote branch
+`fix/audit-bypasses`, above r35's `999b037`.
+Archive SHA-256:
+`97adecabe0eb8e7dbb339d098f7710fa0402b486f4c60d58d9b62040da9ac9a8`.
+Preserve it and earlier source pins without squash.
+
+Non-root Arch `.SRCINFO` generation, freshness, Go tests, vet and race passed;
+each new test fails on the previous code. The package gate built r35 and r36 and
+upgraded with the previous archives present, without `--force`. The
+installed-artifact supported-Paru gate passed (297 PASS, 0 FAIL), including real
+Paru installs of `-S --repo --mode=aur hello` and `-S extra/tree hello`, the
+planning refusal of `aur/hello`, and `TestUnapprovedFinalInstallIsGuarded`
+against `/usr/bin/auroscope`. No workstation installation, deployment or merge
+was performed.
+
 ### Verified r35: Claude Code minimum version (#103)
 
 Each `claude-code` audit first runs `claude --version` and admits only a strict
