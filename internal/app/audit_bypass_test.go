@@ -1,9 +1,11 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -82,5 +84,37 @@ func TestEditSnapshotIgnoresSigningAndHooks(t *testing.T) {
 	}
 	if strings.Contains(raw, "gpgsig") || !strings.Contains(raw, "AURoscope reviewed edit") {
 		t.Fatalf("unexpected snapshot commit:\n%s", raw)
+	}
+}
+
+// Issue #107: aur/hello must reach the final install qualified. Unqualified,
+// Paru may install a repository hello while the audited AUR commit becomes the
+// baseline of a recipe that was never built.
+func TestQualifiedTargetsReachFinalInstall(t *testing.T) {
+	for _, decision := range []string{"approve", "skip"} {
+		t.Run(decision, func(t *testing.T) {
+			dir := t.TempDir()
+			repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\npkgver=1\n")
+			calls := filepath.Join(dir, "calls")
+			paru := fakeParu(t, dir, calls, repo, "REPO TARGET core tree\nAUR TARGET hello hello\n")
+			codex := fakeCodex(t, dir, filepath.Join(dir, "bundle"), `{"summary":"checked","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+			var output bytes.Buffer
+			status := runOptionFixture(t, []string{"-S", "core/tree", "aur/hello"}, runConfig{
+				paruPath: paru, codexPath: codex,
+				statePath: filepath.Join(dir, "state"), cloneDir: filepath.Join(dir, "clones"),
+				stdin: strings.NewReader(decision + "\n"), stdout: &output, stderr: &output,
+			})
+			if status != 0 {
+				t.Fatalf("status=%d: %s", status, &output)
+			}
+			wantFinal := "-S -- core/tree"
+			if decision == "approve" {
+				wantFinal = "-S --skipreview -- core/tree aur/hello"
+			}
+			want := []string{"-P --order -- core/tree aur/hello", "-G hello", wantFinal}
+			if got := strings.Split(strings.TrimSpace(readString(t, calls)), "\n"); !reflect.DeepEqual(got, want) {
+				t.Fatalf("calls=%q, want %q", got, want)
+			}
+		})
 	}
 }

@@ -118,9 +118,10 @@ func TestSelectedDependencyPlan(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(plan.RepoTargets, []string{"tree"}) ||
+			// Issue #107: requested targets keep their own repository spelling.
+			if !reflect.DeepEqual(plan.RepoTargets, []string{"extra/tree"}) ||
 				!reflect.DeepEqual(plan.AURPkgbases, []string{"split-base"}) ||
-				!reflect.DeepEqual(plan.AURTargetsByPkgbase["split-base"], []string{"chosen"}) {
+				!reflect.DeepEqual(plan.AURTargetsByPkgbase["split-base"], []string{"aur/chosen"}) {
 				t.Fatalf("selected dependency lost or unrelated dependency promoted: %#v", plan)
 			}
 			for _, absent := range []string{"missing", "split-base", "virtual-provider"} {
