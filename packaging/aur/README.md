@@ -75,6 +75,31 @@ the full pinned-Paru integration gate and the opt-in real Codex audit test.
 
 ## Upstream snapshot
 
+### Verified r35: Claude Code minimum version (#103)
+
+Each `claude-code` audit first runs `claude --version` and admits only a strict
+`MAJOR.MINOR.PATCH (Claude Code)` banner of at least 2.1.325, with no ceiling,
+like ADR-0046 for Codex. An older, prerelease or malformed banner fails the audit
+before any bundle is sent; CLI diagnostics stay hidden. The policy is proposed in
+ADR-0103 and awaits Mathieu's `GO DECISION` on decision issue #103.
+
+Package: `0.1.0.r35.g999b037-1`.
+Immutable source: `999b037533879cfd81dc9df8f78a6ead86efbf79`, on remote branch
+`fix/claude-structured-output`, above r34's `9147235` and main `b65ecc7`.
+Archive SHA-256:
+`c2158e54d04ed6ad015e3db68cfa3714a33989d4fa9939b2d8b5a4bda49d222d`.
+Preserve it and earlier source pins without squash.
+
+Non-root Arch `.SRCINFO` generation, freshness, Go tests and vet passed; removing
+the version check fails 26 tests. The package gate built r34 and r35 and upgraded
+with the previous archives present, without `--force`. The installed-artifact
+supported-Paru gate passed (294 PASS, 0 FAIL), including fake-Claude selection,
+retry, skip, cancel and thinking against `/usr/bin/auroscope`. The real Claude
+Code 2.1.325 contract passed again offline with the version check, and live
+audits passed with the default model and with `haiku`; see
+[the provider note](../../docs/dependency-notes/audit-providers.md).
+No workstation installation, deployment or merge was performed.
+
 ### Verified r34: Claude Code structured output (#101)
 
 The `claude-code` provider now passes the audit schema with `--json-schema`,
