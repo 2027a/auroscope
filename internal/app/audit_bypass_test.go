@@ -89,9 +89,10 @@ func TestEditSnapshotIgnoresSigningAndHooks(t *testing.T) {
 	}
 }
 
-// Issue #107: aur/hello must reach the final install qualified. Unqualified,
-// Paru may install a repository hello while the audited AUR commit becomes the
-// baseline of a recipe that was never built.
+// Issue #107: requested targets keep their spelling in the final install. The
+// pinned Paru's -P --order reports aur/ targets MISSING (the real gate checks
+// that refusal); this fake order covers a Paru that would resolve them, where an
+// unqualified hello could be installed from a repository instead.
 func TestQualifiedTargetsReachFinalInstall(t *testing.T) {
 	for _, decision := range []string{"approve", "skip"} {
 		t.Run(decision, func(t *testing.T) {

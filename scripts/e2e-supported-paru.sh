@@ -248,18 +248,28 @@ pacman -Q hello
 echo 'Native option operands preserved through audited Paru installs'
 
 # Issues #105 and #107 with real Paru: a later --mode=aur reopens the AUR after
-# --repo and must be audited; a qualified aur/ target stays qualified through
-# planning and the guarded final install.
+# --repo and must be audited. A repository-qualified target keeps its spelling
+# in a mixed audited install. Pinned -P --order ignores the aur/ namespace, so
+# aur/hello is refused at planning: no acquisition, audit or build.
 before_mode_codex=$(wc -l </tmp/codex-calls)
 printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild --repo --mode=aur hello
 grep -Fx -- '-S --noconfirm --rebuild --repo --mode=aur --skipreview -- hello' /tmp/paru-calls
-printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild aur/hello
-grep -Fx -- '-P --order -- aur/hello' /tmp/paru-calls
-grep -Fx -- '-S --noconfirm --rebuild --skipreview -- aur/hello' /tmp/paru-calls
+printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild extra/tree hello
+grep -Fx -- '-P --order -- extra/tree hello' /tmp/paru-calls
+grep -Fx -- '-S --noconfirm --rebuild --skipreview -- extra/tree hello' /tmp/paru-calls
 after_mode_codex=$(wc -l </tmp/codex-calls)
 [ "$after_mode_codex" -eq $((before_mode_codex + 2)) ]
-pacman -Q hello
-echo 'Reopened AUR mode audited; qualified aur/ target installed as audited'
+pacman -Q hello tree
+before_acquire=$(grep -c -- '^-G ' /tmp/paru-calls || true)
+if printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm aur/hello >/tmp/aur-namespace-output 2>&1; then
+  cat /tmp/aur-namespace-output
+  echo 'aur/ target unexpectedly passed planning' >&2
+  exit 1
+fi
+grep -Fx 'auroscope: Paru resolution reported MISSING: aur/hello' /tmp/aur-namespace-output
+[ "$(grep -c -- '^-G ' /tmp/paru-calls || true)" -eq "$before_acquire" ]
+[ "$(wc -l </tmp/codex-calls)" -eq "$after_mode_codex" ]
+echo 'Reopened AUR mode audited; repository qualification kept; aur/ refused at planning'
 
 # Real edit snapshots the cache worktree as a local commit, triggers a second
 # audit, and reaches the same Paru worktree/guard before rebuilding.

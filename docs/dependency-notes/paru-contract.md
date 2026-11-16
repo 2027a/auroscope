@@ -222,17 +222,24 @@ build. The refusal replaces the audit in that case: forwarding mode options to
 of this guarded install lives in the private transaction directory, so an
 unusable `AUROSCOPE_CLONE_DIR` still cannot affect official installs.
 
-The plan also stripped qualification from requested targets: `aur/foo` reached
-the final install as `foo`, which Paru may satisfy from a repository while the
-audited AUR commit became the baseline (#107). A requested target now keeps its
-own spelling (`aur/foo`, `extra/foo`) through the final install.
+The plan also stripped qualification from requested targets (#107): in a mixed
+audited install, `-S extra/tree hello` reached the final Paru as `tree hello`,
+which may resolve `tree` from another repository. A requested target now keeps
+its own spelling through the final install. The review feared that `aur/foo`
+could likewise become `foo`, be satisfied from a repository and advance the AUR
+baseline. The real gate shows that this cannot happen at the pin: `src/order.rs`
+builds its resolver without `custom_aur_namespace` (unlike `src/resolver.rs`), so
+`-P --order -- aur/foo` reports `MISSING` and AURoscope stops before acquisition,
+audit or build. Qualified `aur/` targets are therefore unsupported but fail
+closed; the preserved spelling only matters if a later Paru resolves them.
 
 Verification: `TestRepoModeReopenedForAURIsAudited`,
 `TestQualifiedTargetsReachFinalInstall` and `TestUnapprovedFinalInstallIsGuarded`
 (which runs the real binary's `PreBuildCommand` from the generated configuration)
 fail on the previous code. The supported-Paru gate adds real-Paru installs of
-`-S --repo --mode=aur hello` and `-S aur/hello`, and runs the guard test against
-the installed artifact.
+`-S --repo --mode=aur hello` (audited), `-S extra/tree hello` (qualification
+kept) and `-S aur/hello` (refused at planning, no audit or build), and runs the
+guard test against the installed artifact.
 
 ## Sources consulted
 
