@@ -16,7 +16,7 @@ docker run --rm -i \
   "$IMAGE" /bin/bash <<'BASH'
 set -euo pipefail
 
-pacman --noconfirm --needed -Sy git go sudo namcap
+pacman --noconfirm --needed -Syu git go sudo namcap
 useradd --create-home --shell /bin/bash builder
 printf 'builder ALL=(ALL:ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/auroscope-package-test
 chmod 0440 /etc/sudoers.d/auroscope-package-test

@@ -189,11 +189,18 @@ func (c codexClient) verifyVersion(config runConfig) error {
 }
 
 func admitsCodexVersion(banner string) bool {
-	parts := stableCodexBanner.FindStringSubmatch(banner)
+	return admitsStableVersion(stableCodexBanner, banner, [3]string{"0", "150", "1"})
+}
+
+// admitsStableVersion matches a strict banner whose three submatches are
+// canonical decimal version parts, then compares them with an inclusive
+// minimum. There is no upper limit.
+func admitsStableVersion(banner *regexp.Regexp, value string, minimum [3]string) bool {
+	parts := banner.FindStringSubmatch(value)
 	if parts == nil {
 		return false
 	}
-	for i, minimum := range []string{"0", "150", "1"} {
+	for i, minimum := range minimum {
 		part := parts[i+1]
 		// Canonical decimal digits compare numerically by length, then value.
 		// No integer conversion means no overflow or implicit version ceiling.

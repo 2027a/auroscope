@@ -76,6 +76,7 @@ func TestProviderClaudeThinking(t *testing.T) {
 			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 			t.Setenv("CAPTURE_EFFORT", filepath.Join(dir, "effort"))
 			writeExecutable(t, dir, "claude", `#!/bin/sh
+if [ "$1" = --version ]; then printf '2.1.325 (Claude Code)\n'; exit 0; fi
 set -eu
 value=''
 count=0
@@ -86,7 +87,7 @@ done
 [ "$count" -le 1 ]
 printf '%s' "$value" > "$CAPTURE_EFFORT"
 case "$value" in future*) exit 2 ;; esac
-printf '%s' '{"type":"result","subtype":"success","is_error":false,"result":"{\"summary\":\"reviewed\",\"risk\":\"low\",\"findings\":[],\"uncertainty\":\"\",\"inspect\":[]}"}'
+printf '%s' '{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":{"summary":"reviewed","risk":"low","findings":[],"uncertainty":"","inspect":[]}}'
 `)
 			config := auditConfig{Provider: "claude-code"}
 			if effort != "" {

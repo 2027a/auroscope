@@ -75,6 +75,59 @@ the full pinned-Paru integration gate and the opt-in real Codex audit test.
 
 ## Upstream snapshot
 
+### Verified r35: Claude Code minimum version (#103)
+
+Each `claude-code` audit first runs `claude --version` and admits only a strict
+`MAJOR.MINOR.PATCH (Claude Code)` banner of at least 2.1.325, with no ceiling,
+like ADR-0046 for Codex. An older, prerelease or malformed banner fails the audit
+before any bundle is sent; CLI diagnostics stay hidden. The policy is ADR-0103,
+accepted by Mathieu's `GO DECISION` on decision issue #103.
+
+Package: `0.1.0.r35.g999b037-1`.
+Immutable source: `999b037533879cfd81dc9df8f78a6ead86efbf79`, on remote branch
+`fix/claude-structured-output`, above r34's `9147235` and main `b65ecc7`.
+Archive SHA-256:
+`c2158e54d04ed6ad015e3db68cfa3714a33989d4fa9939b2d8b5a4bda49d222d`.
+Preserve it and earlier source pins without squash.
+
+Non-root Arch `.SRCINFO` generation, freshness, Go tests and vet passed; removing
+the version check fails 26 tests. The package gate built r34 and r35 and upgraded
+with the previous archives present, without `--force`. The installed-artifact
+supported-Paru gate passed (294 PASS, 0 FAIL), including fake-Claude selection,
+retry, skip, cancel and thinking against `/usr/bin/auroscope`. The real Claude
+Code 2.1.325 contract passed again offline with the version check, and live
+audits passed with the default model and with `haiku`; see
+[the provider note](../../docs/dependency-notes/audit-providers.md).
+No workstation installation, deployment or merge was performed.
+
+### Verified r34: Claude Code structured output (#101)
+
+The `claude-code` provider now passes the audit schema with `--json-schema`,
+like Codex `--output-schema`, and accepts only Claude's `structured_output`
+object as the report. Before, 1 of 6 real audits wrapped a valid report in a
+Markdown fence and failed strict validation. `AUROSCOPE_CLAUDE` selects the
+executable like `AUROSCOPE_CODEX`. Local validation reasons are shown escaped;
+CLI diagnostics stay hidden. The test containers now run a full `pacman -Syu`:
+the pinned image's partial upgrade broke on openssl 4.1 before any build.
+The supported-Paru gate also refreshes Paru's `openssl`/`openssl-sys` bindings
+(0.9.111 → 0.9.118) as it already did for `alpm`; Paru's code stays at `9ac3578`.
+
+Package: `0.1.0.r34.g9147235-1`.
+Immutable source: `914723566b106cd0b3555065dd82972f029637b4`, on remote branch
+`fix/claude-structured-output`, above current main `b65ecc7`.
+Archive SHA-256:
+`5cfaf66fd2e89098172ec297342038ff34fde7d30700d0f4e6498b997d7d42c1`.
+Preserve it and earlier source pins without squash.
+
+Non-root Arch `.SRCINFO` generation, freshness, Go tests, vet and race-enabled
+provider tests passed. The package gate built r33 and r34 and upgraded with the
+previous archives present, without `--force`. The installed-artifact supported
+Paru gate also passed, including fake-Claude selection, retry, skip, cancel and
+no Codex fallback against `/usr/bin/auroscope`. The real Claude Code 2.1.325
+contract and 8 of 8 live inert-fixture audits are recorded in
+[the provider note](../../docs/dependency-notes/audit-providers.md).
+No workstation installation, deployment or merge was performed.
+
 ### Verified r32: recovery after the r31 verification
 
 The later host check exposed a test assumption: `TMPDIR` was labelled as disk

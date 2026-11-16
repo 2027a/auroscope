@@ -46,53 +46,94 @@ Official documentation consulted:
 - <https://code.claude.com/docs/en/headless>
 - <https://code.claude.com/docs/en/settings-reference#disableallhooks>
 
-Real executable checked: `2.1.269 (Claude Code)`, native Linux x64 npm distribution.
-Its tarball and npm integrity metadata were downloaded independently and matched:
+### Current contract: structured output (2.1.325)
 
-- <https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/2.1.269>
-- <https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-2.1.269.tgz>
+Production uses `--print --output-format json`, a fresh private `0700` directory,
+`--no-session-persistence`, `--safe-mode` and an explicit session name. `--tools ''`,
+MCP denial, strict empty MCP configuration, disabled setting sources, ordinary
+hooks and slash commands remove package execution capabilities. The bounded
+bundle is stdin, never the user's terminal input. The executable is `claude` on
+`PATH`, or `AUROSCOPE_CLAUDE`, mirroring `AUROSCOPE_CODEX`.
+
+Version admission (decision issue #103, modelled on ADR-0046): before each audit,
+`claude --version` runs with empty stdin, bounded output, the audit timeout and
+signal handling. Only the strict banner `MAJOR.MINOR.PATCH (Claude Code)`, one
+optional trailing newline, and a numerically compared triplet of at least
+`2.1.325` are admitted, with no ceiling. Older versions, prereleases and
+malformed banners fail the audit before any bundle is sent; the version probe's
+diagnostics stay hidden like the audit's. Admitted means eligible for an audit
+attempt; only 2.1.325 is qualified below.
+
+Like Codex `--output-schema`, the audit schema is passed with `--json-schema`.
+Claude Code then offers the model exactly one tool, `StructuredOutput`, which only
+records the answer, and returns it as the envelope's `structured_output` object.
+Only that object is validated locally as the report; the free-text `result` is
+ignored. A missing, null, non-object or invalid object fails the audit with
+retry/skip/cancel. The local validation reason is shown, terminal-escaped; CLI
+diagnostics remain hidden because native auth helpers can print secrets.
+
+Why: the previous text-only contract (schema in the system prompt, report parsed
+from `result`) failed intermittently with real inference. On 2026-11-15, 1 of 6
+live audits of an inert fixture with Claude Code 2.1.325 wrapped the otherwise
+valid report in a Markdown `json` fence, which strict validation rightly rejected
+and the generic error hid. The structured-output contract removes that formatting
+dependency instead of loosening local JSON validation.
+
+Real executable checked: `2.1.325 (Claude Code)`, native Linux x64. The installed
+binary's SHA-256 `0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf`
+equals the `package/claude` file of the npm archive, whose integrity matched:
+
+- <https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/2.1.325>
+- <https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-2.1.325.tgz>
 
 ```text
-sha512-Ti+9oKbf2p9pJuMMj1Fv+6YzljREpy9cx6SN7NV7Zik/vaaXPxC8u+cDiGF7HnPPJ5HsLbmwKoh3BnE3IhdAeQ==
+sha512-BqZzMvP/zgLLL34S+7OzbG+cyoFp7gwWHU5koVwsyMlTAz+0zZAmbY+UkzvtN2RXxp6AcMenbYIjQJxoXfUY3w==
 ```
 
-The npm parent package now supplies a launcher plus platform-specific optional
-packages, not `cli.js`. Use the native platform archive for this contract test.
-
-Production uses `--print --output-format json`, a fresh private directory,
-`--no-session-persistence`, `--safe-mode`, and an explicit session name.
-`--tools ''`, MCP denial, strict empty MCP configuration, disabled setting sources,
-ordinary hooks and slash commands remove package execution capabilities. The
-bounded bundle is stdin, never the user's terminal input. The schema is part of
-the system prompt; local code parses `result` from a successful result envelope.
-It deliberately does not use the agentic structured-output tool.
-
-`--bare` is not interchangeable: current documentation says it disables native
-OAuth/keychain authentication. Safe mode preserves native login while suppressing
-customizations. Managed administrator settings can still apply; this is not an OS
-sandbox or a guarantee against a compromised CLI/administrator. User settings
-such as custom authentication helpers are not loaded in this invocation.
-
-The real production client passed in non-root disposable Arch with external
-networking disabled and a deterministic loopback Anthropic transport:
+`TestProviderClaudeRealCLIContract` passed with that executable in the pinned
+`archlinux:base-devel` image under `docker run --network none`, as a non-root user
+with an empty HOME and an inert credential. A loopback server played the model:
 
 - all production flags accepted by the actual executable;
 - stdin bundle reached the server; interactive input was not inherited;
-- zero tools advertised in the actual model request;
-- one request to the selected fixture model;
-- actual Claude result envelope decoded and report validated locally.
+- exactly one model tool advertised, `StructuredOutput`, carrying the audit schema;
+- the fixture answered through that tool; one request was made;
+- the envelope's `structured_output` was decoded and validated locally.
 
-An initial probe observed an additional title-generation request despite disabled
-session persistence. Passing `--name 'AURoscope audit'` removed it; the regression
-requires exactly one request. This is an observed CLI contract, not a fake CLI
-substituting for the executable. The model response and credential were fixtures:
-there was no real Anthropic inference, OAuth login or live model qualification.
-Other CLI versions are not qualified; unsupported flags fail without fallback.
+`TestProviderLiveAudit` with `AUROSCOPE_TEST_LIVE_PROVIDER=claude-code` then used
+real inference through Mathieu's native login on the inert fixture metadata, with
+no `model` (the CLI's native default, reported as `claude-opus-5-5`): 8 of 8
+consecutive structured-output audits validated locally.
 
-The opt-in regression is `TestProviderClaudeRealCLIContract`, with
-`AUROSCOPE_TEST_REAL_CLAUDE` pointing to that verified native executable. Run it in
-isolated Arch without external networking or real credentials. It changes HOME
-only inside its test process and uses a loopback server with an inert credential.
+The same test with `AUROSCOPE_TEST_LIVE_MODEL=haiku`, the cheapest model alias
+offered by Claude Code, passed 8 of 8; every envelope reported `claude-haiku-5-5`,
+a `structured_output` object and 2 or 3 turns. A temporary, uncommitted variant
+sent an inert hostile fixture as text only (a `post_install` running
+`curl … | sh` and `chmod 4755`, plus `sha256sums=('SKIP')`): 6 of 6 Haiku reports
+validated locally, all rated `critical` and cited both install-script lines
+correctly. In 4 of the 6, at least one PKGBUILD line number was wrong (usually
+off by two, for instance `source=` cited as line 3 instead of 5); local
+validation only checks that cited lines exist, so line accuracy is a model-quality
+limit, not a contract guarantee.
+
+This qualifies the invocation for that CLI version with its default model and
+`haiku`, not other versions or models, and not audit quality on real recipes.
+Unsupported flags fail without fallback.
+
+`--bare` is not interchangeable: it disables native OAuth/keychain authentication.
+Safe mode preserves native login while suppressing customizations. Managed
+administrator settings can still apply; this is not an OS sandbox or a guarantee
+against a compromised CLI/administrator. User settings such as custom
+authentication helpers are not loaded in this invocation. An `ANTHROPIC_API_KEY`
+inherited from the environment may take precedence over the subscription login.
+
+### Earlier text-result contract (2.1.269, superseded)
+
+The first implementation deliberately avoided the structured-output tool and put
+the schema in the system prompt. It was checked with the native 2.1.269 archive
+(`sha512-Ti+9oKbf2p9pJuMMj1Fv+6YzljREpy9cx6SN7NV7Zik/vaaXPxC8u+cDiGF7HnPPJ5HsLbmwKoh3BnE3IhdAeQ==`)
+in disposable Arch, with zero tools advertised. An initial probe observed an extra
+title-generation request; `--name 'AURoscope audit'` removed it and remains.
 
 ## HTTP contracts
 
