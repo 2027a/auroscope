@@ -157,11 +157,8 @@ func (o orchestrator) installReviewed(store *stateStore, originalArgs []string, 
 		if err != nil {
 			return err
 		}
-		result := o.paru.finalInstall(args, nil)
-		if result.status != 0 {
-			return childExit{status: result.status}
-		}
-		return nil
+		_, args = operationCloneOptions(args, o.config.cloneDir, true)
+		return guardedNativeInstall(o.paru, args, o.config.cloneDir)
 	}
 	txDir, confPath, err := writeTransactionFiles(approved, o.config.cloneDir)
 	if err != nil {
@@ -211,7 +208,23 @@ func finishNative(paru paruClient, originalArgs, repoTargets []string) error {
 		// only those selected targets rather than opening the search again.
 		args = append([]string{"-S", "--"}, repoTargets...)
 	}
-	result := paru.finalInstall(args, nil)
+	// No operation clone root here: an unusable AUROSCOPE_CLONE_DIR must not
+	// affect official installs. Unexpected clones stay in the private tx dir.
+	return guardedNativeInstall(paru, args, "")
+}
+
+// guardedNativeInstall runs a final install whose plan has no approved AUR
+// recipe. The planning query does not see the user's options (-a, --mode,
+// --aur...), so Paru may still resolve a target to the AUR. The empty approval
+// list makes the guard refuse any such build before its recipe executes;
+// repository packages install exactly as before.
+func guardedNativeInstall(paru paruClient, args []string, cloneDir string) error {
+	txDir, confPath, err := writeTransactionFiles(nil, cloneDir)
+	if err != nil {
+		return fmt.Errorf("prepare guarded final install: %w", err)
+	}
+	defer os.RemoveAll(txDir)
+	result := paru.finalInstall(args, []string{"PARU_CONF=" + confPath})
 	if result.status != 0 {
 		return childExit{status: result.status}
 	}
@@ -445,6 +458,9 @@ func writeTransactionFiles(approved []recipeIdentity, cloneDir string) (string, 
 	}()
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", "", err
+	}
+	if cloneDir == "" {
+		cloneDir = filepath.Join(dir, "clones")
 	}
 	txPath := filepath.Join(dir, "approved.json")
 	confPath := filepath.Join(dir, "paru.conf")

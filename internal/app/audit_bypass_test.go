@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -114,6 +115,63 @@ func TestQualifiedTargetsReachFinalInstall(t *testing.T) {
 			want := []string{"-P --order -- core/tree aur/hello", "-G hello", wantFinal}
 			if got := strings.Split(strings.TrimSpace(readString(t, calls)), "\n"); !reflect.DeepEqual(got, want) {
 				t.Fatalf("calls=%q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// Issue #106: the planning query does not see -a/--mode, so a target planned
+// as a repository package may still be built from the AUR by the final Paru.
+// Every final install must carry the guard; with no approval it refuses the
+// build before the recipe runs. Runs in the checkout and on the installed
+// artifact (the guard is the real binary's PreBuildCommand).
+func TestUnapprovedFinalInstallIsGuarded(t *testing.T) {
+	binary := os.Getenv("AUROSCOPE_TEST_BINARY")
+	if binary == "" {
+		binary = filepath.Join(t.TempDir(), "auroscope")
+		if out, err := exec.Command("go", "build", "-o", binary, "../../cmd/auroscope").CombinedOutput(); err != nil {
+			t.Fatalf("build: %v %s", err, out)
+		}
+	}
+	for _, tc := range []struct {
+		name, order, input string
+		args               []string
+	}{
+		{"planned-repo", "REPO TARGET extra foo\n", "", []string{"-Sa", "--noconfirm", "foo"}},
+		{"aur-skipped", "REPO TARGET extra foo\nAUR TARGET hello hello\n", "skip\n", []string{"-Sa", "--noconfirm", "foo", "hello"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
+			calls := filepath.Join(dir, "calls")
+			// Fake Paru resolves the final target to the AUR anyway, then runs
+			// the configured PreBuildCommand exactly where makepkg would start.
+			paru := writeExecutable(t, dir, "paru", `#!/bin/sh
+printf '%s\n' "$*" >> "$CALLS"
+if test "$1 $2" = "-P --order"; then printf '%s' "$ORDER_OUTPUT"; exit 0; fi
+if test "$1" = "-G"; then rm -rf "$PWD/$2"; cp -R "$RECIPE_REPO" "$PWD/$2"; exit 0; fi
+if test -z "${PARU_CONF:-}"; then echo unguarded >> "$CALLS"; exit 0; fi
+hook=$(sed -n 's/^PreBuildCommand = //p' "$PARU_CONF")
+test -n "$hook" || { echo no-hook >> "$CALLS"; exit 0; }
+if (cd "$RECIPE_REPO" && PKGBASE=foo sh -c "$hook"); then echo built >> "$CALLS"; exit 0; fi
+echo refused >> "$CALLS"
+exit 1
+`)
+			t.Setenv("CALLS", calls)
+			t.Setenv("RECIPE_REPO", repo)
+			t.Setenv("ORDER_OUTPUT", tc.order)
+			codex := fakeCodex(t, dir, filepath.Join(dir, "bundle"), `{"summary":"checked","risk":"low","findings":[],"uncertainty":"","inspect":[]}`)
+			cmd := exec.Command(binary, tc.args...)
+			cmd.Env = append(os.Environ(), "AUROSCOPE_PARU="+paru, "AUROSCOPE_CODEX="+codex,
+				"AUROSCOPE_STATE="+filepath.Join(dir, "state"), "AUROSCOPE_CLONE_DIR="+filepath.Join(dir, "clones"))
+			cmd.Stdin = strings.NewReader(tc.input)
+			out, err := cmd.CombinedOutput()
+			got := readString(t, calls)
+			if err == nil || strings.Contains(got, "built") || strings.Contains(got, "unguarded") || strings.Contains(got, "no-hook") || !strings.Contains(got, "refused") {
+				t.Fatalf("unapproved AUR build was not refused by the guard: err=%v\ncalls:\n%s\noutput:\n%s", err, got, out)
+			}
+			if !strings.Contains(string(out), `unexpected pkgbase "foo"`) {
+				t.Fatalf("missing guard refusal:\n%s", out)
 			}
 		})
 	}

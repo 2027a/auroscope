@@ -130,7 +130,7 @@ AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   AUROSCOPE_TEST_DISK_ROOT=/work \
   AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
-  go test ./internal/app -run '^(TestTemporaryArchivesLifecycle|TestTemporaryOperation.*|TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
+  go test ./internal/app -run '^(TestTemporaryArchivesLifecycle|TestTemporaryOperation.*|TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking|TestUnapprovedFinalInstallIsGuarded)$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestOptionOperands(Handoff|RejectInvalidBeforeParu|NativePassThrough|SeparatorReachesOrder)$' -count=1 -v -timeout=120s
@@ -246,6 +246,20 @@ after_options_codex=$(wc -l </tmp/codex-calls)
 [ "$after_options_codex" -eq $((before_options_codex + 2)) ]
 pacman -Q hello
 echo 'Native option operands preserved through audited Paru installs'
+
+# Issues #105 and #107 with real Paru: a later --mode=aur reopens the AUR after
+# --repo and must be audited; a qualified aur/ target stays qualified through
+# planning and the guarded final install.
+before_mode_codex=$(wc -l </tmp/codex-calls)
+printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild --repo --mode=aur hello
+grep -Fx -- '-S --noconfirm --rebuild --repo --mode=aur --skipreview -- hello' /tmp/paru-calls
+printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild aur/hello
+grep -Fx -- '-P --order -- aur/hello' /tmp/paru-calls
+grep -Fx -- '-S --noconfirm --rebuild --skipreview -- aur/hello' /tmp/paru-calls
+after_mode_codex=$(wc -l </tmp/codex-calls)
+[ "$after_mode_codex" -eq $((before_mode_codex + 2)) ]
+pacman -Q hello
+echo 'Reopened AUR mode audited; qualified aur/ target installed as audited'
 
 # Real edit snapshots the cache worktree as a local commit, triggers a second
 # audit, and reaches the same Paru worktree/guard before rebuilding.

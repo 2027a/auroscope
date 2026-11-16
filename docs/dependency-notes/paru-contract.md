@@ -199,6 +199,41 @@ integration evidence: `build/issue-84/package-r23.log` and
 
 These findings are historical evidence, not a complete active adapter contract. The first executable task must revalidate one supported Paru version and prove the exact native search/selection, AUR worktree, edit/re-audit, skip/exclusion, final build, and `PreBuildCommand` path required by [ADR-0015](../decisions/0015-minimal-llm-first-wrapper.md). Do not carry forward the transitional human-menu parser, broad mode classifier, or closure machinery merely because they were explored here.
 
+### Mode options, unapproved final installs and qualified targets (issues #105–#107)
+
+At pinned `9ac3578`, `src/command_line.rs` makes `--repo`, `--aur`/`-a` and
+`--pkgbuilds` *replace* the mode, while each `--mode` word is *ORed* into it.
+Dispatch previously treated any `--repo` as repository-only and passed the
+command natively, so `-S --repo --mode=aur foo` or `-S --repo -a foo` built
+`foo` from the AUR without audit or guard (#105). Only a final `--repo`,
+optionally followed by `--mode` words adding nothing but repositories, now stays
+native; option values and targets after `--` are never read as options.
+
+The preliminary `-P --order` call still receives no user options (see above).
+When it planned every target as a repository package, or when every AUR recipe
+was skipped, the final Paru ran with the user's options but without the
+transaction configuration: `-Sa foo`, with `foo` in a repository and the AUR,
+could build the AUR recipe unaudited (#106). Every final install of the audited
+path now carries the transaction configuration. With no approval, the guard
+refuses any AUR build before its recipe runs, like the empty AUR update above;
+repository packages install as before because the hook only runs before a
+build. The refusal replaces the audit in that case: forwarding mode options to
+`-P --order` would be a separate contract change to qualify. The clone directory
+of this guarded install lives in the private transaction directory, so an
+unusable `AUROSCOPE_CLONE_DIR` still cannot affect official installs.
+
+The plan also stripped qualification from requested targets: `aur/foo` reached
+the final install as `foo`, which Paru may satisfy from a repository while the
+audited AUR commit became the baseline (#107). A requested target now keeps its
+own spelling (`aur/foo`, `extra/foo`) through the final install.
+
+Verification: `TestRepoModeReopenedForAURIsAudited`,
+`TestQualifiedTargetsReachFinalInstall` and `TestUnapprovedFinalInstallIsGuarded`
+(which runs the real binary's `PreBuildCommand` from the generated configuration)
+fail on the previous code. The supported-Paru gate adds real-Paru installs of
+`-S --repo --mode=aur hello` and `-S aur/hello`, and runs the guard test against
+the installed artifact.
+
 ## Sources consulted
 
 - `man/paru.8`, `man/paru.conf.5`
