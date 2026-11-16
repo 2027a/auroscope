@@ -294,7 +294,11 @@ func snapshotEditedWorktree(dir string, preExistingUntracked map[string]bool) er
 	if staged == "" {
 		return nil
 	}
-	if _, err := gitOutput(dir, "-c", "user.name=AURoscope", "-c", "user.email=auroscope@localhost", "commit", "-m", "AURoscope reviewed edit"); err != nil {
+	// The snapshot holds hostile recipe content: never sign it with the user's
+	// key, and never run the user's global or template hooks in the AUR clone.
+	if _, err := gitOutput(dir, "-c", "user.name=AURoscope", "-c", "user.email=auroscope@localhost",
+		"-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+		"commit", "--no-verify", "--no-gpg-sign", "-m", "AURoscope reviewed edit"); err != nil {
 		return fmt.Errorf("commit edited recipe: %w", err)
 	}
 	return nil

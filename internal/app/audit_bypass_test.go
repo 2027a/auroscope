@@ -2,6 +2,9 @@ package app
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +43,44 @@ func TestRepoModeReopenedForAURIsAudited(t *testing.T) {
 				t.Fatalf("commandMayBuildAUR = %v, want %v", got, tc.audited)
 			}
 		})
+	}
+}
+
+// Issue #108: the post-edit snapshot holds hostile recipe content. It must not
+// use the user's signing key or run global, template or repository hooks.
+func TestEditSnapshotIgnoresSigningAndHooks(t *testing.T) {
+	dir := t.TempDir()
+	repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
+	marker := filepath.Join(dir, "hook-ran")
+	hooks := filepath.Join(dir, "hooks")
+	if err := os.Mkdir(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hook := "#!/bin/sh\n: > " + posixShellQuote(marker) + "\nexit 1\n"
+	for _, name := range []string{"pre-commit", "commit-msg", "post-commit"} {
+		writeExecutable(t, hooks, name, hook)
+		writeExecutable(t, filepath.Join(repo, ".git", "hooks"), name, hook)
+	}
+	global := filepath.Join(dir, "gitconfig")
+	config := "[commit]\n\tgpgsign = true\n[gpg]\n\tformat = ssh\n[user]\n\tsigningkey = " + filepath.Join(dir, "absent-key") + "\n[core]\n\thooksPath = " + hooks + "\n"
+	if err := os.WriteFile(global, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	if err := os.WriteFile(filepath.Join(repo, "PKGBUILD"), []byte("pkgname=hello\npkgrel=2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshotEditedWorktree(repo, map[string]bool{}); err != nil {
+		t.Fatalf("snapshot used signing or hooks: %v", err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("a hook ran during the snapshot")
+	}
+	raw, err := gitOutput(repo, "cat-file", "commit", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(raw, "gpgsig") || !strings.Contains(raw, "AURoscope reviewed edit") {
+		t.Fatalf("unexpected snapshot commit:\n%s", raw)
 	}
 }
