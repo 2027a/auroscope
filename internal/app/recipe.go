@@ -78,7 +78,7 @@ func buildAuditBundle(pkgbase, dir string, previous *packageBaseline) (auditBund
 			bundle.Mode = "unchanged"
 		} else {
 			bundle.Mode = "diff"
-			diff, err := gitOutput(dir, "diff", "--no-ext-diff", previous.Commit, "--")
+			diff, err := recipeDiff(dir, previous.Commit, manifestFiles)
 			if err != nil {
 				return auditBundle{}, fmt.Errorf("build recipe diff: %w", err)
 			}
@@ -98,6 +98,43 @@ func buildAuditBundle(pkgbase, dir string, previous *packageBaseline) (auditBund
 		return auditBundle{}, err
 	}
 	return bundle, nil
+}
+
+// sourcedRecipeFile names the recipe files that makepkg or pacman source as
+// shell code by convention. Other files are opaque only if they are not UTF-8;
+// the prompt asks the model to report opaque files that recipe logic executes.
+func sourcedRecipeFile(path string) bool {
+	return path == "PKGBUILD" || strings.HasSuffix(path, ".install")
+}
+
+// recipeDiff shows current text files as text, whatever the recipe's own
+// .gitattributes says (-diff, binary, textconv drivers from the user's Git
+// configuration), and lets Git summarize the rest. Rename detection is off so
+// each side of the split stays within its own paths.
+func recipeDiff(dir, previous string, files []recipeFile) (string, error) {
+	base := []string{"diff", "--no-ext-diff", "--no-textconv", "--no-renames"}
+	var textPaths, otherPaths []string
+	for _, file := range files {
+		if file.Text != "" || file.Size == 0 {
+			textPaths = append(textPaths, ":(literal)"+file.Path)
+			otherPaths = append(otherPaths, ":(exclude,literal)"+file.Path)
+		}
+	}
+	var diff string
+	if len(textPaths) > 0 {
+		args := append(append(append([]string(nil), base...), "--text", previous, "--"), textPaths...)
+		out, err := gitOutput(dir, args...)
+		if err != nil {
+			return "", err
+		}
+		diff = out
+	}
+	args := append(append(append([]string(nil), base...), previous, "--", "."), otherPaths...)
+	out, err := gitOutput(dir, args...)
+	if err != nil {
+		return "", err
+	}
+	return diff + out, nil
 }
 
 // Batch-check distinguishes a missing object with successful machine output,
@@ -225,12 +262,20 @@ func readRecipeFiles(dir string) ([]recipeFile, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read recipe file %s: %w", name, err)
 		}
-		if bytes.IndexByte(data, 0) < 0 && !utf8.Valid(data) {
+		// Shells keep reading past a NUL byte, so NUL alone never makes a file
+		// opaque: any valid UTF-8 is audit text (JSON and the terminal escape
+		// NUL). Only invalid UTF-8 containing NUL is an opaque binary, and the
+		// files makepkg and pacman source directly must never be opaque.
+		text := utf8.Valid(data)
+		if !text && bytes.IndexByte(data, 0) < 0 {
 			return nil, fmt.Errorf("recipe file %s contains invalid UTF-8 text", name)
+		}
+		if !text && sourcedRecipeFile(name) {
+			return nil, fmt.Errorf("recipe file %s must be UTF-8 text: its content is executed but cannot be shown for audit", name)
 		}
 		sum := sha256.Sum256(data)
 		file := recipeFile{Path: name, Mode: mode, Type: fileType, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data))}
-		if bytes.IndexByte(data, 0) < 0 {
+		if text {
 			file.Text = string(data)
 		}
 		files = append(files, file)

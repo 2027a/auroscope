@@ -59,10 +59,14 @@ For every AUR `pkgbase` in Paru's resolved build set—explicit target or depend
 The audit bundle contains only bounded required data:
 
 - current Git commit and a deterministic recipe manifest digest;
-- diff from the last successfully approved and built commit;
+- diff from the last successfully approved and built commit, with current text
+  files always shown as text: a recipe `.gitattributes` (`-diff`, `binary`,
+  textconv) cannot hide or rewrite it;
 - all tracked recipe files in every audit mode, including unchanged install,
   removal, helper scripts and auxiliary packaging files;
-- full text for text files; metadata and hashes only for binary files;
+- full text for every UTF-8 file, NUL characters included; metadata and hashes
+  only for non-UTF-8 binary files. `PKGBUILD` and `*.install` files must be
+  UTF-8 text, otherwise audit preparation fails (issue #104);
 - committed `.SRCINFO` and minimal package metadata as untrusted data.
 
 AURoscope never sources or executes `PKGBUILD`, `.install`, patches, source archives, or another package-supplied file while preparing the audit.
@@ -106,7 +110,7 @@ The accepted version policy is an inclusive minimum of `0.150.1` with no ceiling
 
 Codex runs outside the recipe repository in a private temporary directory containing only the audit bundle. Package content is labelled as untrusted data.
 
-The model evaluates **packaging security**, not the inherent safety of the upstream application or opaque binaries. Its scope is the recipe and its change: `PKGBUILD`, install and auxiliary files, source provenance and URL changes, integrity checks, build/package commands, destinations, permissions, privilege, services, hooks, persistence, sensitive-data access, and obfuscation. An unchanged source URL that points to the expected official upstream keeps the upstream software outside this audit. The same presumption applies on a first full audit when the source clearly points to the package's declared official upstream. Binary opacity or inability to inspect upstream internals is not a finding, uncertainty, or reason to raise risk. Changed, mutable, mismatched, redirected, or unofficial sources and weakened integrity checks remain in scope.
+The model evaluates **packaging security**, not the inherent safety of the upstream application or opaque binaries. Its scope is the recipe and its change: `PKGBUILD`, install and auxiliary files, source provenance and URL changes, integrity checks, build/package commands, destinations, permissions, privilege, services, hooks, persistence, sensitive-data access, and obfuscation. An unchanged source URL that points to the expected official upstream keeps the upstream software outside this audit. The same presumption applies on a first full audit when the source clearly points to the package's declared official upstream. Opacity of upstream binaries or inability to inspect upstream internals is not a finding, uncertainty, or reason to raise risk. A tracked recipe file without text that the recipe sources, executes, or installs as a script or hook is in scope and must be reported. Changed, mutable, mismatched, redirected, or unofficial sources and weakened integrity checks remain in scope.
 
 A valid response is bounded JSON with:
 
