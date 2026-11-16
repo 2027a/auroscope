@@ -229,10 +229,10 @@ func commandMayBuildAUR(args []string) bool {
 		// option's arity and accidentally select a non-audited path.
 		return true
 	}
-	args = parsed.classificationArgs()
-	if hasArgument(args, "--repo") {
+	if paruModeIsRepoOnly(parsed.options) {
 		return false
 	}
+	args = parsed.classificationArgs()
 	if isRefreshOnlySync(args) {
 		return false
 	}
@@ -280,6 +280,54 @@ func commandMayBuildAUR(args []string) bool {
 		}
 	}
 	return false
+}
+
+// paruModeIsRepoOnly reports whether the command-line options leave pinned
+// Paru 9ac3578 in repository-only mode (src/command_line.rs): --repo, --aur/-a
+// and --pkgbuilds replace the mode, and each --mode word is ORed into it. The
+// configured mode is unknown, so only a final --repo, optionally followed by
+// --mode words that add nothing but repositories, is repository-only. A later
+// --aur, -a, --pkgbuilds or --mode=aur reopens AUR builds and must be audited.
+func paruModeIsRepoOnly(options []string) bool {
+	repoOnly := false
+	for i := 0; i < len(options); i++ {
+		arg := options[i]
+		if strings.HasPrefix(arg, "--") {
+			name, value, attached := strings.Cut(arg, "=")
+			if !attached && paruLongOptionArity(name) == 1 {
+				i++
+				if i < len(options) {
+					value = options[i]
+				}
+			}
+			switch name {
+			case "--repo":
+				repoOnly = true
+			case "--aur", "--pkgbuilds":
+				repoOnly = false
+			case "--mode":
+				for _, word := range strings.Split(value, ",") {
+					if word != "repo" && (word == "" || strings.Trim(word, "r") != "") {
+						repoOnly = false
+					}
+				}
+			}
+			continue
+		}
+		// Short clusters: -b and -r end the cluster with their operand.
+		for j := 1; j < len(arg); j++ {
+			if arg[j] == 'b' || arg[j] == 'r' {
+				if j == len(arg)-1 {
+					i++
+				}
+				break
+			}
+			if arg[j] == 'a' {
+				repoOnly = false
+			}
+		}
+	}
+	return repoOnly
 }
 
 // isRefreshOnlySync recognizes the narrow Paru/Pacman sync form that refreshes

@@ -263,8 +263,22 @@ func (result orderResult) plan(targets ...string) (resolvedPlan, error) {
 	// package may therefore appear only as DEP or MAKE, not TARGET. Match exact
 	// emitted names; never infer a provider or accept an absent package.
 	requested := map[string]bool{}
+	// Keep a requested target's own spelling for the final install: aur/foo
+	// must not become foo, which Paru may satisfy from a repository while the
+	// audited AUR commit becomes a baseline that was never built.
+	spelling := map[string]string{}
 	for _, target := range targets {
-		requested[unqualifiedTarget(target)] = true
+		name := unqualifiedTarget(target)
+		requested[name] = true
+		if _, ok := spelling[name]; !ok {
+			spelling[name] = target
+		}
+	}
+	finalName := func(name string) string {
+		if target, ok := spelling[name]; ok {
+			return target
+		}
+		return name
 	}
 	classified := map[string]bool{}
 	seenRepo := map[string]bool{}
@@ -278,7 +292,7 @@ func (result orderResult) plan(targets ...string) (resolvedPlan, error) {
 			classified[name] = true
 			if (record.Fields[0] == "TARGET" || requested[name]) && !seenRepo[name] {
 				seenRepo[name] = true
-				plan.RepoTargets = append(plan.RepoTargets, name)
+				plan.RepoTargets = append(plan.RepoTargets, finalName(name))
 			}
 		case "AUR":
 			pkgbase := record.Fields[1]
@@ -296,7 +310,7 @@ func (result orderResult) plan(targets ...string) (resolvedPlan, error) {
 				}
 				if !seenAURTarget[pkgbase][name] {
 					seenAURTarget[pkgbase][name] = true
-					plan.AURTargetsByPkgbase[pkgbase] = append(plan.AURTargetsByPkgbase[pkgbase], name)
+					plan.AURTargetsByPkgbase[pkgbase] = append(plan.AURTargetsByPkgbase[pkgbase], finalName(name))
 				}
 			}
 		case "MISSING", "CONFLICT":

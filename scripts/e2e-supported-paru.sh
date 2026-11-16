@@ -130,7 +130,7 @@ AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   AUROSCOPE_TEST_DISK_ROOT=/work \
   AUROSCOPE_TEST_TMPFS_ROOT=/work/auroscope-tmpfs \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
-  go test ./internal/app -run '^(TestTemporaryArchivesLifecycle|TestTemporaryOperation.*|TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking)$' -count=1 -v -timeout=120s
+  go test ./internal/app -run '^(TestTemporaryArchivesLifecycle|TestTemporaryOperation.*|TestCodexBundleDirectInput|TestMissingBaselineReview|TestAuditIncludesAuxiliaryScripts|TestPreparationFailureDecisionsDoNotApprove|TestProviderSelectionAndNoBypass|TestProviderInstalledHTTP|TestProviderClaudeThinking|TestUnapprovedFinalInstallIsGuarded)$' -count=1 -v -timeout=120s
 AUROSCOPE_TEST_BINARY=/usr/bin/auroscope \
   GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomodcache CGO_ENABLED=1 \
   go test ./internal/app -run '^TestOptionOperands(Handoff|RejectInvalidBeforeParu|NativePassThrough|SeparatorReachesOrder)$' -count=1 -v -timeout=120s
@@ -246,6 +246,30 @@ after_options_codex=$(wc -l </tmp/codex-calls)
 [ "$after_options_codex" -eq $((before_options_codex + 2)) ]
 pacman -Q hello
 echo 'Native option operands preserved through audited Paru installs'
+
+# Issues #105 and #107 with real Paru: a later --mode=aur reopens the AUR after
+# --repo and must be audited. A repository-qualified target keeps its spelling
+# in a mixed audited install. Pinned -P --order ignores the aur/ namespace, so
+# aur/hello is refused at planning: no acquisition, audit or build.
+before_mode_codex=$(wc -l </tmp/codex-calls)
+printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild --repo --mode=aur hello
+grep -Fx -- '-S --noconfirm --rebuild --repo --mode=aur --skipreview -- hello' /tmp/paru-calls
+printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm --rebuild extra/tree hello
+grep -Fx -- '-P --order -- extra/tree hello' /tmp/paru-calls
+grep -Fx -- '-S --noconfirm --rebuild --skipreview -- extra/tree hello' /tmp/paru-calls
+after_mode_codex=$(wc -l </tmp/codex-calls)
+[ "$after_mode_codex" -eq $((before_mode_codex + 2)) ]
+pacman -Q hello tree
+before_acquire=$(grep -c -- '^-G ' /tmp/paru-calls || true)
+if printf 'approve\n' | run_as_builder /usr/local/bin/auroscope -S --noconfirm aur/hello >/tmp/aur-namespace-output 2>&1; then
+  cat /tmp/aur-namespace-output
+  echo 'aur/ target unexpectedly passed planning' >&2
+  exit 1
+fi
+grep -Fx 'auroscope: Paru resolution reported MISSING: aur/hello' /tmp/aur-namespace-output
+[ "$(grep -c -- '^-G ' /tmp/paru-calls || true)" -eq "$before_acquire" ]
+[ "$(wc -l </tmp/codex-calls)" -eq "$after_mode_codex" ]
+echo 'Reopened AUR mode audited; repository qualification kept; aur/ refused at planning'
 
 # Real edit snapshots the cache worktree as a local commit, triggers a second
 # audit, and reaches the same Paru worktree/guard before rebuilding.
